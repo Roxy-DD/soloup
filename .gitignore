@@ -1,0 +1,38 @@
+# deps / build
+node_modules/
+dist/
+*.tsbuildinfo
+
+# Rust / Cargo build
+**/target/
+
+# web
+.next/
+.next.stale.*/
+out/
+
+# test / coverage
+coverage/
+
+# env & local db
+.env
+.env.*
+!.env.example
+*.db
+*.db-wal
+*.db-shm
+
+# Sidecar binaries (built from source in CI)
+src-tauri/resources/*.exe
+
+# MCP config with hardcoded local paths
+.mcp.json
+
+# Tauri auto-generated
+src-tauri/gen/
+
+# misc
+.DS_Store
+*.log
+_pnpm_test.txt
+_tmp_*

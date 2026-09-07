@@ -1,0 +1,36 @@
+{
+  "name": "soloup",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@10.24.0",
+  "engines": {
+    "node": ">=22"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "esbuild"
+    ]
+  },
+  "scripts": {
+    "build": "pnpm --filter @soloup/web build",
+    "build:backend": "cd backend && cargo build --release -p soloup-server -p soloup-mcp",
+    "build:dist": "pnpm build && pnpm build:backend && node scripts/copy-sidecars.mjs && cd src-tauri && cargo tauri build && pnpm build:upx",
+    "build:upx": "node scripts/upx-compress.mjs",
+    "typecheck": "pnpm --filter @soloup/web typecheck",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "eslint .",
+    "format:check": "prettier --check .",
+    "format": "prettier --write ."
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "eslint": "^9.18.0",
+    "prettier": "^3.4.2",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.3",
+    "typescript-eslint": "^8.20.0",
+    "vitest": "^3.0.0"
+  }
+}

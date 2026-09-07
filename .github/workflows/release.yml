@@ -1,0 +1,52 @@
+name: Release Build
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install webview2
+        run: |
+          Invoke-WebRequest -Uri "https://go.microsoft.com/fwlink/p/?LinkId=2124703" -OutFile "$env:TEMP\MicrosoftEdgeWebview2Setup.exe"
+          Start-Process "$env:TEMP\MicrosoftEdgeWebview2Setup.exe" -ArgumentList "/install" -Wait
+
+      - name: Install frontend dependencies
+        run: pnpm install
+
+      - name: Build backend sidecars
+        run: cd backend && cargo build --release -p soloup-server -p soloup-mcp
+
+      - name: Copy sidecars to resources
+        run: node scripts/copy-sidecars.mjs
+
+      - name: Build Tauri app
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tagName: ${{ github.ref_name }}
+          releaseName: 'Soloup ${{ github.ref_name }}'
+          releaseBody: 'See the assets to download the installer.'
+          releaseDraft: false
+          prerelease: false
