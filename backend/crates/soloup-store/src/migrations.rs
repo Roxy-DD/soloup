@@ -109,7 +109,15 @@ ALTER TABLE achievements ADD COLUMN reveal_at REAL;
 "#,
 };
 
-pub const MIGRATIONS: &[Migration] = &[V1_INIT, V2_ACHIEVEMENT_REVEAL];
+pub const V3_SKILL_IS_BRANCH: Migration = Migration {
+    version: 3,
+    label: "技能分支标记：is_branch",
+    sql: r#"
+ALTER TABLE skills ADD COLUMN is_branch INTEGER NOT NULL DEFAULT 0;
+"#,
+};
+
+pub const MIGRATIONS: &[Migration] = &[V1_INIT, V2_ACHIEVEMENT_REVEAL, V3_SKILL_IS_BRANCH];
 
 pub fn latest_schema_version() -> i64 {
     MIGRATIONS.last().map(|m| m.version).unwrap_or(0)

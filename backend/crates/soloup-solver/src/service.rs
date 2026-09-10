@@ -63,6 +63,7 @@ pub enum MutationKind {
         category: SkillCategory,
         parent_id: Option<String>,
         difficulty: Option<soloup_core::schema::Difficulty>,
+        is_branch: bool,
         links: Vec<SkillLinkInput>,
     },
     SkillUpdate {
@@ -73,6 +74,7 @@ pub enum MutationKind {
         category: Option<SkillCategory>,
         difficulty: Option<soloup_core::schema::Difficulty>,
         curve_type: Option<Option<soloup_core::schema::CurveType>>,
+        is_branch: Option<bool>,
     },
     SkillMove {
         id: String,
@@ -336,7 +338,7 @@ impl Solver {
             let links = LinkRepo { db: c };
             let audit = AuditRepo { db: c };
             match &mutation {
-                MutationKind::SkillCreate { name, category, parent_id, difficulty, links: input_links } => {
+                MutationKind::SkillCreate { name, category, parent_id, difficulty, is_branch, links: input_links } => {
                     let row = Skill {
                         id: String::new(),
                         name: name.clone(),
@@ -353,6 +355,7 @@ impl Solver {
                         color: None,
                         icon: None,
                         sort: 0,
+                        is_branch: *is_branch,
                     };
                     let created = skills.create(&row)?;
                     if !input_links.is_empty() {
@@ -365,7 +368,7 @@ impl Solver {
                     )?;
                     Ok(json!({ "id": created.id, "name": created.name }))
                 }
-                MutationKind::SkillUpdate { id, name, description, parent_id, category, difficulty, curve_type } => {
+                MutationKind::SkillUpdate { id, name, description, parent_id, category, difficulty, curve_type, is_branch } => {
                     let existing = skills.get(id)?
                         .ok_or_else(|| SolverError::new(SolverErrorCode::NotFound, format!("技能不存在：{id}")))?;
                     let mut row = existing.clone();
@@ -375,6 +378,7 @@ impl Solver {
                     if let Some(c) = category { row.category = *c; }
                     if let Some(d) = difficulty { row.difficulty = *d; }
                     if let Some(ct) = curve_type { row.curve_type = *ct; }
+                    if let Some(ib) = is_branch { row.is_branch = *ib; }
                     let changed = profile_diff(Self::profile_of(&existing), Self::profile_of(&row));
                     let has_changed = crate::params::has_param_diff(&changed);
                     let effective_at = if has_changed { Some(add_days(&today, 1)) } else { None };

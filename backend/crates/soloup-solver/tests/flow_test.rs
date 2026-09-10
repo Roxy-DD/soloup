@@ -35,6 +35,7 @@ fn skill(id: &str, name: &str, parent: Option<&str>, created: &str) -> Skill {
         color: None,
         icon: None,
         sort: 0,
+        is_branch: false,
     }
 }
 

@@ -264,7 +264,7 @@ pub fn dispatch(solver: &mut Solver, op: &str, args: &Value) -> Result<Value, Rp
                 let mut out = Vec::new();
                 for s in skills.iter().filter(|x| x.parent_id.as_deref() == parent) {
                     let kids = build(skills, Some(&s.id), levels, links);
-                    let leaf = kids.is_empty();
+                    let leaf = !s.is_branch && kids.is_empty();
                     let attrs: Vec<Value> = links
                         .get(&s.id)
                         .map(|v| v.iter().map(|(a, w)| json!([a, w])).collect())
@@ -374,6 +374,7 @@ pub fn dispatch(solver: &mut Solver, op: &str, args: &Value) -> Result<Value, Rp
                     category: cat,
                     parent_id: s(args, "parentId").or(s(args, "parent_id")).map(|x| x.to_string()),
                     difficulty: diff,
+                    is_branch: b(args, "isBranch") || b(args, "is_branch"),
                     links,
                 },
                 actor_of(args),
@@ -406,6 +407,11 @@ pub fn dispatch(solver: &mut Solver, op: &str, args: &Value) -> Result<Value, Rp
                     category: cat,
                     difficulty: diff,
                     curve_type: ct,
+                    is_branch: if args.get("isBranch").is_some() || args.get("is_branch").is_some() {
+                        Some(b(args, "isBranch") || b(args, "is_branch"))
+                    } else {
+                        None
+                    },
                 },
                 actor_of(args),
             )?;
@@ -781,8 +787,36 @@ pub fn dispatch(solver: &mut Solver, op: &str, args: &Value) -> Result<Value, Rp
             Ok(json!({ "id": id, "deleted": true }))
         }
 
+        // 修复 is_branch：有子节点 → 分支；无属性关联 → 分支（叶子技能必有关联）。
+        "repair.is_branch" => {
+            let skills = solver.store.skills().list_all()?;
+            let parent_ids: HashSet<String> = skills.iter()
+                .filter_map(|s| s.parent_id.clone())
+                .collect();
+            let mut linked_ids: HashSet<String> = HashSet::new();
+            for s in &skills {
+                if !solver.store.links().list_for_skill(&s.id)?.is_empty() {
+                    linked_ids.insert(s.id.clone());
+                }
+            }
+            let mut fixed = 0;
+            for s in &skills {
+                let should_branch = parent_ids.contains(&s.id) || !linked_ids.contains(&s.id);
+                if should_branch != s.is_branch {
+                    solver.store.skills().update(&{
+                        let mut r = s.clone();
+                        r.is_branch = should_branch;
+                        r
+                    })?;
+                    fixed += 1;
+                }
+            }
+            Ok(json!({ "fixed": fixed }))
+        }
+
         // 首屏聚合：一次请求拿齐渲染所需的全部后端派生数据（前端不重算）。
         "bootstrap" => {
+            let _ = dispatch(solver, "repair.is_branch", &json!({}));
             let overview = dispatch(solver, "overview", &json!({}))?;
             Ok(json!({
                 "date": today_iso(),
@@ -929,7 +963,9 @@ pub fn dispatch(solver: &mut Solver, op: &str, args: &Value) -> Result<Value, Rp
 }
 
 fn is_leaf(skills: &[Skill], id: &str) -> bool {
-    !skills.iter().any(|s| s.parent_id.as_deref() == Some(id))
+    skills.iter().find(|s| s.id == *id).is_none_or(|s| {
+        !s.is_branch && !skills.iter().any(|c| c.parent_id.as_deref() == Some(id))
+    })
 }
 
 /// 评估自定义成就条件（简化版 stat_threshold DSL）。

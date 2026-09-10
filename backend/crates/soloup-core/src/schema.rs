@@ -115,6 +115,8 @@ pub struct Skill {
     pub color: Option<String>,
     pub icon: Option<String>,
     pub sort: i64,
+    /// true = 分支节点（大类/子类），false = 叶子技能。
+    pub is_branch: bool,
 }
 
 /// 仅叶子技能可有关联/可被打卡（§2.3-1 / §2.4）。
