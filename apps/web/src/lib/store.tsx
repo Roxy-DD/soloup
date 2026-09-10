@@ -175,7 +175,8 @@ async function applyAction(a: Action, state: AppState): Promise<void> {
     }
     case 'BRANCH_ADD': {
       const parentId = a.parentPath ? branchIdByPath(state.skills, a.parentPath) : null;
-      await rpc('skill.create', { name: a.name, parentId, category: 'cognitive' });
+      const res = await rpc('skill.create', { name: a.name, parentId, category: 'cognitive', isBranch: true }) as { id?: string };
+      if (res?.id) await rpc('skill.update', { id: res.id, isBranch: true });
       return;
     }
     case 'SKILL_RENAME':

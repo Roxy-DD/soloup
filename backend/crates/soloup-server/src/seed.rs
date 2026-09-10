@@ -24,24 +24,25 @@ pub struct SkillSeed {
     pub category: SkillCategory,
     pub difficulty: Option<Difficulty>,
     pub parent: Option<&'static str>,
+    pub is_branch: bool,
 }
 
 pub const SEED_SKILLS: &[SkillSeed] = &[
-    SkillSeed { id: "art", name: "艺术", category: SkillCategory::Cognitive, difficulty: None, parent: None },
-    SkillSeed { id: "art-paint", name: "绘画", category: SkillCategory::Cognitive, difficulty: None, parent: Some("art") },
-    SkillSeed { id: "art-music", name: "音乐", category: SkillCategory::Cognitive, difficulty: None, parent: Some("art") },
-    SkillSeed { id: "sketch", name: "素描", category: SkillCategory::Cognitive, difficulty: Some(Difficulty::Normal), parent: Some("art-paint") },
-    SkillSeed { id: "oil", name: "油画", category: SkillCategory::Cognitive, difficulty: Some(Difficulty::Normal), parent: Some("art-paint") },
-    SkillSeed { id: "digi", name: "数字绘画", category: SkillCategory::Cognitive, difficulty: Some(Difficulty::Normal), parent: Some("art-paint") },
-    SkillSeed { id: "guitar", name: "吉他", category: SkillCategory::Cognitive, difficulty: Some(Difficulty::Casual), parent: Some("art-music") },
-    SkillSeed { id: "tech", name: "技术", category: SkillCategory::Knowledge, difficulty: None, parent: None },
-    SkillSeed { id: "tech-code", name: "编程", category: SkillCategory::Knowledge, difficulty: None, parent: Some("tech") },
-    SkillSeed { id: "fe", name: "前端开发", category: SkillCategory::Knowledge, difficulty: Some(Difficulty::Normal), parent: Some("tech-code") },
-    SkillSeed { id: "rust", name: "Rust", category: SkillCategory::Knowledge, difficulty: Some(Difficulty::Hard), parent: Some("tech-code") },
-    SkillSeed { id: "body", name: "身体", category: SkillCategory::Physical, difficulty: None, parent: None },
-    SkillSeed { id: "body-sport", name: "运动", category: SkillCategory::Physical, difficulty: None, parent: Some("body") },
-    SkillSeed { id: "run", name: "跑步", category: SkillCategory::Physical, difficulty: Some(Difficulty::Normal), parent: Some("body-sport") },
-    SkillSeed { id: "gym", name: "力量训练", category: SkillCategory::Physical, difficulty: Some(Difficulty::Hard), parent: Some("body-sport") },
+    SkillSeed { id: "art", name: "艺术", category: SkillCategory::Cognitive, difficulty: None, parent: None, is_branch: true },
+    SkillSeed { id: "art-paint", name: "绘画", category: SkillCategory::Cognitive, difficulty: None, parent: Some("art"), is_branch: true },
+    SkillSeed { id: "art-music", name: "音乐", category: SkillCategory::Cognitive, difficulty: None, parent: Some("art"), is_branch: true },
+    SkillSeed { id: "sketch", name: "素描", category: SkillCategory::Cognitive, difficulty: Some(Difficulty::Normal), parent: Some("art-paint"), is_branch: false },
+    SkillSeed { id: "oil", name: "油画", category: SkillCategory::Cognitive, difficulty: Some(Difficulty::Normal), parent: Some("art-paint"), is_branch: false },
+    SkillSeed { id: "digi", name: "数字绘画", category: SkillCategory::Cognitive, difficulty: Some(Difficulty::Normal), parent: Some("art-paint"), is_branch: false },
+    SkillSeed { id: "guitar", name: "吉他", category: SkillCategory::Cognitive, difficulty: Some(Difficulty::Casual), parent: Some("art-music"), is_branch: false },
+    SkillSeed { id: "tech", name: "技术", category: SkillCategory::Knowledge, difficulty: None, parent: None, is_branch: true },
+    SkillSeed { id: "tech-code", name: "编程", category: SkillCategory::Knowledge, difficulty: None, parent: Some("tech"), is_branch: true },
+    SkillSeed { id: "fe", name: "前端开发", category: SkillCategory::Knowledge, difficulty: Some(Difficulty::Normal), parent: Some("tech-code"), is_branch: false },
+    SkillSeed { id: "rust", name: "Rust", category: SkillCategory::Knowledge, difficulty: Some(Difficulty::Hard), parent: Some("tech-code"), is_branch: false },
+    SkillSeed { id: "body", name: "身体", category: SkillCategory::Physical, difficulty: None, parent: None, is_branch: true },
+    SkillSeed { id: "body-sport", name: "运动", category: SkillCategory::Physical, difficulty: None, parent: Some("body"), is_branch: true },
+    SkillSeed { id: "run", name: "跑步", category: SkillCategory::Physical, difficulty: Some(Difficulty::Normal), parent: Some("body-sport"), is_branch: false },
+    SkillSeed { id: "gym", name: "力量训练", category: SkillCategory::Physical, difficulty: Some(Difficulty::Hard), parent: Some("body-sport"), is_branch: false },
 ];
 
 /// 叶子 → 属性关联权重。
@@ -186,6 +187,7 @@ pub fn seed_demo(store: &mut Store) -> Result<(), soloup_store::StoreError> {
                 color: None,
                 icon: None,
                 sort: 0,
+                is_branch: s.is_branch,
             })?;
         }
 

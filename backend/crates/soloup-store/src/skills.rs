@@ -9,7 +9,7 @@ use soloup_core::schema::{CurveType, DbEnum, Difficulty, Skill, SkillCategory};
 use crate::errors::{StoreError, StoreErrorCode};
 use crate::generate_id;
 
-pub const COLS: &str = "id, name, description, parent_id, category, difficulty, curve_type, c, v, last_settled_date, created_at, archived_at, color, icon, sort";
+pub const COLS: &str = "id, name, description, parent_id, category, difficulty, curve_type, c, v, last_settled_date, created_at, archived_at, color, icon, sort, is_branch";
 
 fn from_row(row: &Row) -> rusqlite::Result<Skill> {
     let category: String = row.get(4)?;
@@ -33,6 +33,7 @@ fn from_row(row: &Row) -> rusqlite::Result<Skill> {
         color: row.get(12)?,
         icon: row.get(13)?,
         sort: row.get(14)?,
+        is_branch: row.get::<_, bool>(15).unwrap_or(false),
     })
 }
 
@@ -97,7 +98,7 @@ impl SkillRepo<'_> {
         }
         self.db.execute(
             &format!(
-                "INSERT INTO skills ({COLS}) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15)"
+                "INSERT INTO skills ({COLS}) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16)"
             ),
             params![
                 row.id,
@@ -115,6 +116,7 @@ impl SkillRepo<'_> {
                 row.color,
                 row.icon,
                 row.sort,
+                row.is_branch,
             ],
         )?;
         Ok(row)
@@ -146,7 +148,7 @@ impl SkillRepo<'_> {
         self.db.execute(
             "UPDATE skills SET name=?2, description=?3, parent_id=?4, category=?5, difficulty=?6,
              curve_type=?7, c=?8, v=?9, last_settled_date=?10, created_at=?11, archived_at=?12,
-             color=?13, icon=?14, sort=?15 WHERE id=?1",
+             color=?13, icon=?14, sort=?15, is_branch=?16 WHERE id=?1",
             params![
                 s.id,
                 s.name,
@@ -163,6 +165,7 @@ impl SkillRepo<'_> {
                 s.color,
                 s.icon,
                 s.sort,
+                s.is_branch,
             ],
         )?;
         Ok(s.clone())
