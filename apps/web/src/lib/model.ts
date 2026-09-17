@@ -1,14 +1,27 @@
 /* ================= 展示映射 · 日期工具 · 树工具 · 统计推导 =================
    成长曲线（等级 / 级内进度）全部由后端 soloup-core 派生，随 bootstrap 一起下发，
    本文件不再包含任何曲线公式。这里只保留「等级 → 段位 / 配色」这类纯展示映射。 */
-import type { AchCondition, AchStats, AppState, Attr, DayRecord, SkillGroup, SkillLeaf, SkillTreeNode } from './types';
+import type {
+  AchCondition,
+  AchStats,
+  AppState,
+  Attr,
+  DayRecord,
+  SkillGroup,
+  SkillLeaf,
+  SkillTreeNode,
+} from './types';
 import { isLeaf } from './types';
 
 /** 属性面板等级上限（后端 value 值域 0–100，面板折半后为 0–50 级）。仅用于雷达图等展示刻度。 */
 export const ATTR_LV_MAX = 50;
 
 export const TIERS: [number, string][] = [
-  [1, '见习Ⅰ'], [5, '熟练Ⅱ'], [10, '精通Ⅲ'], [15, '大师Ⅳ'], [20, '宗师Ⅴ'],
+  [1, '见习Ⅰ'],
+  [5, '熟练Ⅱ'],
+  [10, '精通Ⅲ'],
+  [15, '大师Ⅳ'],
+  [20, '宗师Ⅴ'],
 ];
 export function tierOf(lv: number): string {
   let t = TIERS[0][1];
@@ -52,7 +65,9 @@ export function collectLeaves(skills: SkillGroup[]): SkillLeaf[] {
   const out: SkillLeaf[] = [];
   const walk = (list: SkillTreeNode[]) => {
     for (const n of list) {
-      if (isLeaf(n)) { if (!n.archived) out.push(n); } else walk(n.ch);
+      if (isLeaf(n)) {
+        if (!n.archived) out.push(n);
+      } else walk(n.ch);
     }
   };
   walk(skills);
@@ -64,7 +79,8 @@ export function collectLeavesAll(skills: SkillGroup[]): SkillLeaf[] {
   const out: SkillLeaf[] = [];
   const walk = (list: SkillTreeNode[]) => {
     for (const n of list) {
-      if (isLeaf(n)) out.push(n); else walk(n.ch);
+      if (isLeaf(n)) out.push(n);
+      else walk(n.ch);
     }
   };
   walk(skills);
@@ -76,7 +92,9 @@ export function countLeaves(n: SkillTreeNode): number {
 }
 
 /** 全部分支及路径（"艺术 / 绘画"），用于新建/移动技能选父级 */
-export function collectBranches(skills: SkillGroup[]): { node: SkillGroup | Exclude<SkillTreeNode, SkillLeaf>; path: string }[] {
+export function collectBranches(
+  skills: SkillGroup[],
+): { node: SkillGroup | Exclude<SkillTreeNode, SkillLeaf>; path: string }[] {
   const out: { node: Exclude<SkillTreeNode, SkillLeaf>; path: string }[] = [];
   const walk = (list: SkillTreeNode[], path: string) => {
     for (const n of list) {
@@ -94,7 +112,10 @@ export function collectBranches(skills: SkillGroup[]): { node: SkillGroup | Excl
 /** 摘除叶子（返回是否成功；不修改入参，调用方先深拷贝） */
 export function removeFromParent(list: SkillTreeNode[], leaf: SkillLeaf): boolean {
   const i = list.indexOf(leaf);
-  if (i > -1) { list.splice(i, 1); return true; }
+  if (i > -1) {
+    list.splice(i, 1);
+    return true;
+  }
   return list.some((n) => !isLeaf(n) && removeFromParent(n.ch, leaf));
 }
 
@@ -113,7 +134,9 @@ export function cloneSkills(skills: SkillGroup[]): SkillGroup[] {
 export function findLeaf(skills: SkillGroup[], id: string): SkillLeaf | undefined {
   const walk = (list: SkillTreeNode[]): SkillLeaf | undefined => {
     for (const n of list) {
-      if (isLeaf(n)) { if (n.id === id) return n; } else {
+      if (isLeaf(n)) {
+        if (n.id === id) return n;
+      } else {
         const f = walk(n.ch);
         if (f) return f;
       }
@@ -134,7 +157,10 @@ export function deriveStats(state: AppState): AchStats {
   const start = days.has(todayKey()) ? 0 : days.has(daysAgoKey(1)) ? 1 : -1;
   if (start >= 0) {
     let n = start;
-    while (days.has(daysAgoKey(n))) { streak += 1; n += 1; }
+    while (days.has(daysAgoKey(n))) {
+      streak += 1;
+      n += 1;
+    }
   }
 
   const maxLitOneDay = records.reduce((m, r) => Math.max(m, r.attrsLit.length), 0);
@@ -146,9 +172,19 @@ export function deriveStats(state: AppState): AchStats {
       skillCheckinCounts.set(sid, (skillCheckinCounts.get(sid) ?? 0) + 1);
     }
   }
-  const maxSkillCheckins = skillCheckinCounts.size > 0 ? Math.max(...skillCheckinCounts.values()) : 0;
+  const maxSkillCheckins =
+    skillCheckinCounts.size > 0 ? Math.max(...skillCheckinCounts.values()) : 0;
   const projectsDone = projects.filter((p) => p.status === 'done').length;
-  return { totalDays, streak, maxLitOneDay, maxAttrLv, maxSkillLv, maxSkillCheckins, projectsDone, totalAttrs: attrs.length };
+  return {
+    totalDays,
+    streak,
+    maxLitOneDay,
+    maxAttrLv,
+    maxSkillLv,
+    maxSkillCheckins,
+    projectsDone,
+    totalAttrs: attrs.length,
+  };
 }
 
 /* ---------- 成就：条件 DSL → 进度展示 ---------- */
@@ -162,14 +198,22 @@ const fmtNum = (n: number) => n.toLocaleString('en-US');
  */
 export function achStatValue(s: AchStats, name: string): number | undefined {
   switch (name) {
-    case 'totalDays': return s.totalDays;
-    case 'streak': return s.streak;
-    case 'maxLitOneDay': return s.maxLitOneDay;
-    case 'maxSkillLv': return s.maxSkillLv;
-    case 'maxSkillCheckins': return s.maxSkillCheckins;
-    case 'projectsCompleted': return s.projectsDone;
-    case 'totalAttrs': return s.totalAttrs;
-    default: return undefined;
+    case 'totalDays':
+      return s.totalDays;
+    case 'streak':
+      return s.streak;
+    case 'maxLitOneDay':
+      return s.maxLitOneDay;
+    case 'maxSkillLv':
+      return s.maxSkillLv;
+    case 'maxSkillCheckins':
+      return s.maxSkillCheckins;
+    case 'projectsCompleted':
+      return s.projectsDone;
+    case 'totalAttrs':
+      return s.totalAttrs;
+    default:
+      return undefined;
   }
 }
 
@@ -272,7 +316,9 @@ export function suggestedSkillsOf(
       return { leaf: l, covers, gain };
     })
     .filter((s) => s.covers > 0);
-  scored.sort((a, b) => b.covers - a.covers || b.gain - a.gain || b.leaf.checkins - a.leaf.checkins);
+  scored.sort(
+    (a, b) => b.covers - a.covers || b.gain - a.gain || b.leaf.checkins - a.leaf.checkins,
+  );
   return scored.slice(0, max).map((s) => s.leaf);
 }
 

@@ -17,7 +17,11 @@ type SkillAction =
   | { type: 'BRANCH_ARCHIVE'; id: string }
   | { type: 'BRANCH_DELETE'; id: string };
 
-export function SkillsTab({ state, dispatch, toast }: {
+export function SkillsTab({
+  state,
+  dispatch,
+  toast,
+}: {
   state: AppState;
   dispatch: React.Dispatch<SkillAction>;
   toast: (m: string) => void;
@@ -25,12 +29,18 @@ export function SkillsTab({ state, dispatch, toast }: {
   const [closed, setClosed] = useState<Set<string>>(new Set());
   const [drawer, setDrawer] = useState<DrawerState | null>(null);
   const [seq, setSeq] = useState(0);
-  const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number; nodeId: string; nodeName: string } | null>(null);
+  const [ctxMenu, setCtxMenu] = useState<{
+    x: number;
+    y: number;
+    nodeId: string;
+    nodeName: string;
+  } | null>(null);
 
   const toggleBranch = (key: string) => {
     setClosed((prev) => {
       const next = new Set(prev);
-      if (next.has(key)) next.delete(key); else next.add(key);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
       return next;
     });
   };
@@ -83,9 +93,15 @@ export function SkillsTab({ state, dispatch, toast }: {
       const lv = node.lv;
       return (
         <li key={node.id}>
-          <div className="tree-node leaf" onClick={() => openLeaf(node.id)}
-            role="button" tabIndex={0}
-            onKeyDown={(e) => { if (e.key === 'Enter') openLeaf(node.id); }}>
+          <div
+            className="tree-node leaf"
+            onClick={() => openLeaf(node.id)}
+            role="button"
+            tabIndex={0}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') openLeaf(node.id);
+            }}
+          >
             <span className="dot" />
             <span className="nm">{node.name}</span>
             <span className="tier" style={{ color: tierColor(lv), borderColor: tierColor(lv) }}>
@@ -100,13 +116,22 @@ export function SkillsTab({ state, dispatch, toast }: {
     const isClosed = closed.has(key);
     return (
       <li key={key} className={isClosed ? 'closed' : ''}>
-        <div className="tree-node branch" onClick={() => toggleBranch(key)}
+        <div
+          className="tree-node branch"
+          onClick={() => toggleBranch(key)}
           onContextMenu={(e) => handleBranchContext(e, node.id ?? '', node.name)}
-          role="button" tabIndex={0} aria-expanded={!isClosed}
-          onKeyDown={(e) => { if (e.key === 'Enter') toggleBranch(key); }}>
+          role="button"
+          tabIndex={0}
+          aria-expanded={!isClosed}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') toggleBranch(key);
+          }}
+        >
           <span className="dot" />
           <span className="nm">{node.name}</span>
-          <span style={{ fontSize: 11, color: 'var(--text-3)', fontWeight: 700 }}>{countLeaves(node)} 技能</span>
+          <span style={{ fontSize: 11, color: 'var(--text-3)', fontWeight: 700 }}>
+            {countLeaves(node)} 技能
+          </span>
           <span className="tw">▾</span>
         </div>
         <ul>{node.ch.map((c) => renderNode(c, gi, `${path}${node.name}/`))}</ul>
@@ -118,19 +143,25 @@ export function SkillsTab({ state, dispatch, toast }: {
     <section className="page" aria-label="技能树">
       <div className="section-title" style={{ marginTop: 4 }}>
         <h2>技能树</h2>
-        <button className="link-btn" onClick={openAdd}>新建 +</button>
+        <button className="link-btn" onClick={openAdd}>
+          新建 +
+        </button>
       </div>
       <p style={{ fontSize: 12, color: 'var(--text-2)', marginBottom: 12 }}>
-        可新建大类 / 子类 / 叶子技能 · 只有叶子可被打卡 · 点击叶子查看详情 · 右键分支可重命名/归档/删除
+        可新建大类 / 子类 / 叶子技能 · 只有叶子可被打卡 · 点击叶子查看详情 ·
+        右键分支可重命名/归档/删除
       </p>
       <div className="card">
         <div className="tree">
           {state.skills.map((g: SkillGroup, gi) => (
             <div key={g.id}>
-              <div className="group-label" onContextMenu={(e) => handleBranchContext(e, g.id, g.name)}>{g.name}</div>
-              <ul style={{ listStyle: 'none' }}>
-                {g.ch.map((c) => renderNode(c, gi, ''))}
-              </ul>
+              <div
+                className="group-label"
+                onContextMenu={(e) => handleBranchContext(e, g.id, g.name)}
+              >
+                {g.name}
+              </div>
+              <ul style={{ listStyle: 'none' }}>{g.ch.map((c) => renderNode(c, gi, ''))}</ul>
             </div>
           ))}
         </div>
@@ -138,28 +169,62 @@ export function SkillsTab({ state, dispatch, toast }: {
 
       {ctxMenu && (
         <>
-          <div style={{ position: 'fixed', inset: 0, zIndex: 999 }} onClick={closeCtxMenu} onContextMenu={(e) => { e.preventDefault(); closeCtxMenu(); }} />
-          <div style={{
-            position: 'fixed', left: ctxMenu.x, top: ctxMenu.y, zIndex: 1000,
-            background: 'var(--card)', border: '2px solid var(--ink)', borderRadius: 6,
-            boxShadow: '3px 3px 0 var(--ink)', padding: '4px 0', minWidth: 140,
-          }}>
-            <div role="button" tabIndex={0} onClick={renameBranch}
+          <div
+            style={{ position: 'fixed', inset: 0, zIndex: 999 }}
+            onClick={closeCtxMenu}
+            onContextMenu={(e) => {
+              e.preventDefault();
+              closeCtxMenu();
+            }}
+          />
+          <div
+            style={{
+              position: 'fixed',
+              left: ctxMenu.x,
+              top: ctxMenu.y,
+              zIndex: 1000,
+              background: 'var(--card)',
+              border: '2px solid var(--ink)',
+              borderRadius: 6,
+              boxShadow: '3px 3px 0 var(--ink)',
+              padding: '4px 0',
+              minWidth: 140,
+            }}
+          >
+            <div
+              role="button"
+              tabIndex={0}
+              onClick={renameBranch}
               style={{ padding: '8px 16px', cursor: 'pointer', fontWeight: 700, fontSize: 14 }}
               onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--panel)')}
-              onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}>
+              onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+            >
               重命名
             </div>
-            <div role="button" tabIndex={0} onClick={archiveBranch}
+            <div
+              role="button"
+              tabIndex={0}
+              onClick={archiveBranch}
               style={{ padding: '8px 16px', cursor: 'pointer', fontWeight: 700, fontSize: 14 }}
               onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--panel)')}
-              onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}>
+              onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+            >
               归档
             </div>
-            <div role="button" tabIndex={0} onClick={deleteBranch}
-              style={{ padding: '8px 16px', cursor: 'pointer', fontWeight: 700, fontSize: 14, color: 'var(--red)' }}
+            <div
+              role="button"
+              tabIndex={0}
+              onClick={deleteBranch}
+              style={{
+                padding: '8px 16px',
+                cursor: 'pointer',
+                fontWeight: 700,
+                fontSize: 14,
+                color: 'var(--red)',
+              }}
               onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--panel)')}
-              onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}>
+              onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+            >
               删除
             </div>
           </div>
@@ -169,13 +234,17 @@ export function SkillsTab({ state, dispatch, toast }: {
       <div className="skill-grid">
         <div className="mini-card">
           <h4>熟练度公式</h4>
-          <div className="bd" style={{ fontFamily: 'monospace', fontSize: 13, marginBottom: 6 }}>LV = 4·ln(1 + 使用次数 / 2)⌋</div>
+          <div className="bd" style={{ fontFamily: 'monospace', fontSize: 13, marginBottom: 6 }}>
+            LV = 4·ln(1 + 使用次数 / 2)⌋
+          </div>
           <div className="bd">见习Ⅰ 1–4 · 熟练Ⅱ 5–9 · 精通 10–14 · 大师Ⅳ 15–19 · 宗师Ⅴ 20+</div>
         </div>
         <div className="mini-card">
           <h4>关联规则</h4>
           <div className="bd">使用技能 → 点亮关联属性（每日每属性封顶 +1）</div>
-          <div className="bd" style={{ marginTop: 4 }}>权重不叠加，仅用于项目贡献度展示</div>
+          <div className="bd" style={{ marginTop: 4 }}>
+            权重不叠加，仅用于项目贡献度展示
+          </div>
         </div>
       </div>
 

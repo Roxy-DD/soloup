@@ -21,12 +21,43 @@ export function Radar({ attrs }: { attrs: Attr[] }) {
           属性已超过 8 项 · 雷达图自动切换为排行视图
         </div>
         {sorted.map((a) => (
-          <div key={a.id} style={{ display: 'flex', alignItems: 'center', gap: 10, margin: '8px 0' }}>
-            <span style={{ width: 34, fontWeight: 700, fontSize: 13, color: a.color }}>{a.name}</span>
-            <span style={{ flex: 1, height: 12, border: '2px solid var(--ink)', borderRadius: 3, background: 'var(--track)', overflow: 'hidden' }}>
-              <i style={{ display: 'block', height: '100%', width: `${Math.min(100, Math.round((a.lv / MAX) * 100))}%`, background: a.color }} />
+          <div
+            key={a.id}
+            style={{ display: 'flex', alignItems: 'center', gap: 10, margin: '8px 0' }}
+          >
+            <span style={{ width: 34, fontWeight: 700, fontSize: 13, color: a.color }}>
+              {a.name}
             </span>
-            <b style={{ fontFamily: 'var(--px)', fontSize: 11, color: a.color, width: 30, textAlign: 'right' }}>{a.lv}</b>
+            <span
+              style={{
+                flex: 1,
+                height: 12,
+                border: '2px solid var(--ink)',
+                borderRadius: 3,
+                background: 'var(--track)',
+                overflow: 'hidden',
+              }}
+            >
+              <i
+                style={{
+                  display: 'block',
+                  height: '100%',
+                  width: `${Math.min(100, Math.round((a.lv / MAX) * 100))}%`,
+                  background: a.color,
+                }}
+              />
+            </span>
+            <b
+              style={{
+                fontFamily: 'var(--px)',
+                fontSize: 11,
+                color: a.color,
+                width: 30,
+                textAlign: 'right',
+              }}
+            >
+              {a.lv}
+            </b>
           </div>
         ))}
       </div>
@@ -34,17 +65,27 @@ export function Radar({ attrs }: { attrs: Attr[] }) {
   }
 
   // 画布加宽（360×290）+ 圆心右移，保证左侧右对齐标签不被裁切
-  const cx = 180, cy = 142, R = 92;
+  const cx = 180,
+    cy = 142,
+    R = 92;
   const pt = (i: number, r: number): [number, number] => {
     const a = -Math.PI / 2 + (i * 2 * Math.PI) / N;
     return [cx + r * Math.cos(a), cy + r * Math.sin(a)];
   };
   const poly = (r: number) =>
-    Array.from({ length: N }, (_, i) => pt(i, r).map((v) => v.toFixed(1)).join(',')).join(' ');
+    Array.from({ length: N }, (_, i) =>
+      pt(i, r)
+        .map((v) => v.toFixed(1))
+        .join(','),
+    ).join(' ');
 
   const rings = [18.4, 36.8, 55.2, 73.6, 92];
   const dp = attrs
-    .map((a, i) => pt(i, (R * Math.min(MAX, a.lv)) / MAX).map((v) => v.toFixed(1)).join(','))
+    .map((a, i) =>
+      pt(i, (R * Math.min(MAX, a.lv)) / MAX)
+        .map((v) => v.toFixed(1))
+        .join(','),
+    )
     .join(' ');
 
   return (
@@ -56,15 +97,33 @@ export function Radar({ attrs }: { attrs: Attr[] }) {
         const [x, y] = pt(i, R);
         return <line key={i} x1={cx} y1={cy} x2={x} y2={y} stroke="#E5DCC2" strokeWidth="1.2" />;
       })}
-      <polygon className="rd" points={dp} fill="rgba(255,176,32,.30)" stroke="#E2483D" strokeWidth="2.5" strokeLinejoin="round" />
+      <polygon
+        className="rd"
+        points={dp}
+        fill="rgba(255,176,32,.30)"
+        stroke="#E2483D"
+        strokeWidth="2.5"
+        strokeLinejoin="round"
+      />
       {attrs.map((a, i) => {
         const r = (R * Math.min(MAX, a.lv)) / MAX;
         const [x, y] = pt(i, r);
-        return <circle key={a.id} cx={x.toFixed(1)} cy={y.toFixed(1)} r="4" fill={a.color} stroke="#1F1F1F" strokeWidth="1.5" />;
+        return (
+          <circle
+            key={a.id}
+            cx={x.toFixed(1)}
+            cy={y.toFixed(1)}
+            r="4"
+            fill={a.color}
+            stroke="#1F1F1F"
+            strokeWidth="1.5"
+          />
+        );
       })}
       {attrs.map((a, i) => {
         const a2 = -Math.PI / 2 + (i * 2 * Math.PI) / N;
-        const c = Math.cos(a2), s = Math.sin(a2);
+        const c = Math.cos(a2),
+          s = Math.sin(a2);
         const [lx, ly] = pt(i, R + 22);
         const anchor = c > 0.35 ? 'start' : c < -0.35 ? 'end' : 'middle';
         const dy = s > 0.35 ? 10 : s < -0.35 ? -2 : 4;
@@ -78,9 +137,7 @@ export function Radar({ attrs }: { attrs: Attr[] }) {
             fontWeight="700"
             fontFamily="Noto Sans SC"
           >
-            <tspan fill={a.color}>{a.name}</tspan>
-            {' '}
-            <tspan fill="#7A7260">LV{a.lv}</tspan>
+            <tspan fill={a.color}>{a.name}</tspan> <tspan fill="#7A7260">LV{a.lv}</tspan>
           </text>
         );
       })}

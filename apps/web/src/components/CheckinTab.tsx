@@ -2,10 +2,20 @@
 /* ================= 记录页：热力图（真实记录）+ 今日建议（弱项属性/推荐技能）+ 勾选技能 + 点亮预览 + 提交 ================= */
 import React, { useMemo, useState } from 'react';
 import type { AppState, Attr, DayRecord, SkillLeaf } from '@/lib/types';
-import { collectLeaves, attrMapOf, todayKey, todaySuggestions, weekDays, deriveStats } from '@/lib/model';
+import {
+  collectLeaves,
+  attrMapOf,
+  todayKey,
+  todaySuggestions,
+  weekDays,
+  deriveStats,
+} from '@/lib/model';
 import { useToast } from './Toast';
 
-export function CheckinTab({ state, dispatch }: {
+export function CheckinTab({
+  state,
+  dispatch,
+}: {
   state: AppState;
   dispatch: (a: { type: 'SAVE_RECORD'; date: string; skillIds: string[] }) => void;
 }) {
@@ -20,10 +30,14 @@ export function CheckinTab({ state, dispatch }: {
   const [saving, setSaving] = useState(false);
 
   const toggle = (id: string) => {
-    if (!editing) { toast('点击下方按钮进入编辑状态'); return; }
+    if (!editing) {
+      toast('点击下方按钮进入编辑状态');
+      return;
+    }
     setSelected((prev) => {
       const next = new Set(prev);
-      if (next.has(id)) next.delete(id); else next.add(id);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
       return next;
     });
   };
@@ -39,9 +53,7 @@ export function CheckinTab({ state, dispatch }: {
 
   // 今日建议：弱项属性 + 推荐技能（model.todaySuggestions 是纯函数，便于复用/单测）。
   const suggestions = useMemo(() => {
-    const litSet = todayRecord
-      ? new Set(todayRecord.attrsLit)
-      : new Set(litAttrs);
+    const litSet = todayRecord ? new Set(todayRecord.attrsLit) : new Set(litAttrs);
     return todaySuggestions(state, selected, litSet);
   }, [state, selected, litAttrs, todayRecord]);
 
@@ -53,7 +65,10 @@ export function CheckinTab({ state, dispatch }: {
   }, [state]);
 
   const submit = () => {
-    if (!selected.size) { toast('至少选择 1 个技能'); return; }
+    if (!selected.size) {
+      toast('至少选择 1 个技能');
+      return;
+    }
     setSaving(true);
     setTimeout(() => {
       dispatch({ type: 'SAVE_RECORD', date: today, skillIds: [...selected] });
@@ -63,11 +78,18 @@ export function CheckinTab({ state, dispatch }: {
     }, 700);
   };
 
-  const todayStr = new Date().toLocaleDateString('zh-CN', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'long' });
+  const todayStr = new Date().toLocaleDateString('zh-CN', {
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+    weekday: 'long',
+  });
 
   return (
     <section className="page" aria-label="每日记录">
-      <div className="section-title" style={{ marginTop: 4 }}><h2>每日记录</h2></div>
+      <div className="section-title" style={{ marginTop: 4 }}>
+        <h2>每日记录</h2>
+      </div>
       <div className="date-bar">
         <div className="d">{todayStr}</div>
         <div className="streak">🔥 今日 {todayRecord ? '已记录' : '未记录'}</div>
@@ -83,7 +105,13 @@ export function CheckinTab({ state, dispatch }: {
           </div>
           <div className="sug-side" aria-label="今日建议">
             <div className="sug-title">今日建议</div>
-            <Suggestions weak={suggestions.weak} skills={suggestions.skills} am={am} onPick={(id) => toggle(id)} editing={editing} />
+            <Suggestions
+              weak={suggestions.weak}
+              skills={suggestions.skills}
+              am={am}
+              onPick={(id) => toggle(id)}
+              editing={editing}
+            />
           </div>
         </div>
       </div>
@@ -100,8 +128,12 @@ export function CheckinTab({ state, dispatch }: {
               <div className="group-label">{g.name}</div>
               <div className="chips">
                 {groupLeaves.map((l) => (
-                  <button key={l.id} className={`chip${selected.has(l.id) ? ' on' : ''}`}
-                    aria-pressed={selected.has(l.id)} onClick={() => toggle(l.id)}>
+                  <button
+                    key={l.id}
+                    className={`chip${selected.has(l.id) ? ' on' : ''}`}
+                    aria-pressed={selected.has(l.id)}
+                    onClick={() => toggle(l.id)}
+                  >
                     {l.name}
                   </button>
                 ))}
@@ -111,19 +143,49 @@ export function CheckinTab({ state, dispatch }: {
         })}
         <div className="preview">
           本次将点亮 →{' '}
-          {selected.size === 0
-            ? <span style={{ color: 'var(--text-3)' }}>（尚未选择技能）</span>
-            : litAttrs.map((aid) => (
-              <span key={aid} className="lit-chip" style={{ background: am[aid]?.tint, color: am[aid]?.color }}>
+          {selected.size === 0 ? (
+            <span style={{ color: 'var(--text-3)' }}>（尚未选择技能）</span>
+          ) : (
+            litAttrs.map((aid) => (
+              <span
+                key={aid}
+                className="lit-chip"
+                style={{ background: am[aid]?.tint, color: am[aid]?.color }}
+              >
                 {am[aid]?.name ?? aid}
               </span>
-            ))}
-          {litAttrs.length > 0 && <span style={{ fontSize: 11, color: 'var(--text-3)' }}>（重复属性每日只 +1）</span>}
+            ))
+          )}
+          {litAttrs.length > 0 && (
+            <span style={{ fontSize: 11, color: 'var(--text-3)' }}>（重复属性每日只 +1）</span>
+          )}
         </div>
-        <button className="btn-primary" onClick={editing ? submit : () => { setEditing(true); toast('进入编辑状态 · 修改后再次提交将更新记录'); }} disabled={saving}>
-          {saving
-            ? <>记录中<span className="px-load"><i /><i /><i /></span></>
-            : editing ? '提交今日记录' : '✓ 编辑今日记录'}
+        <button
+          className="btn-primary"
+          onClick={
+            editing
+              ? submit
+              : () => {
+                  setEditing(true);
+                  toast('进入编辑状态 · 修改后再次提交将更新记录');
+                }
+          }
+          disabled={saving}
+        >
+          {saving ? (
+            <>
+              记录中
+              <span className="px-load">
+                <i />
+                <i />
+                <i />
+              </span>
+            </>
+          ) : editing ? (
+            '提交今日记录'
+          ) : (
+            '✓ 编辑今日记录'
+          )}
         </button>
       </div>
     </section>
@@ -133,7 +195,7 @@ export function CheckinTab({ state, dispatch }: {
 /** 判断叶子是否属于组（任意层级） */
 function containsLeaf(group: AppState['skills'][number], leaf: { id: string }): boolean {
   const walk = (list: AppState['skills'][number]['ch']): boolean =>
-    list.some((n) => 'ch' in n ? walk(n.ch) : n.id === leaf.id);
+    list.some((n) => ('ch' in n ? walk(n.ch) : n.id === leaf.id));
   return walk(group.ch);
 }
 
@@ -142,7 +204,12 @@ function containsLeaf(group: AppState['skills'][number], leaf: { id: string }): 
  * - 按周分列、顶部标注换月；今天描边高亮；未来日期淡化。
  * - 悬停（移动端点按）格子 → 下方详情条显示当天点亮属性与使用技能。
  */
-function HeatMap({ records, am, leafNames, stats }: {
+function HeatMap({
+  records,
+  am,
+  leafNames,
+  stats,
+}: {
   records: AppState['records'];
   am: Record<string, Attr | undefined>;
   leafNames: Record<string, string>;
@@ -154,7 +221,10 @@ function HeatMap({ records, am, leafNames, stats }: {
     const now = new Date();
     const dow = (now.getDay() + 6) % 7; // 周一=0
     const p = (x: number) => String(x).padStart(2, '0');
-    const out: { cells: { key: string; rec: DayRecord | undefined; future: boolean }[]; head: string }[] = [];
+    const out: {
+      cells: { key: string; rec: DayRecord | undefined; future: boolean }[];
+      head: string;
+    }[] = [];
     for (let w = 0; w < 12; w++) {
       const day0 = new Date(now.getFullYear(), now.getMonth(), now.getDate() - dow - (11 - w) * 7);
       const cells: { key: string; rec: DayRecord | undefined; future: boolean }[] = [];
@@ -176,7 +246,9 @@ function HeatMap({ records, am, leafNames, stats }: {
   const cls = (c: number) => (c >= 5 ? 'h4' : c === 4 ? 'h3' : c >= 2 ? 'h2' : c === 1 ? 'h1' : '');
   const dLabel = (key: string) => {
     const [y, m, d] = key.split('-').map(Number);
-    const wd = ['日', '一', '二', '三', '四', '五', '六'][new Date(y, (m || 1) - 1, d || 1).getDay()];
+    const wd = ['日', '一', '二', '三', '四', '五', '六'][
+      new Date(y, (m || 1) - 1, d || 1).getDay()
+    ];
     return `${m}月${d}日 周${wd}`;
   };
   const sNames = shown ? shown.skillIds.map((i) => leafNames[i]).filter(Boolean) : [];
@@ -185,9 +257,15 @@ function HeatMap({ records, am, leafNames, stats }: {
   return (
     <>
       <div className="heat-stats" aria-label="记录统计">
-        <span className="heat-stat">本周打卡 <b>{stats.week}/7</b></span>
-        <span className="heat-stat">当前连续 <b>{stats.streak}</b> 天</span>
-        <span className="heat-stat">近12周累计 <b>{stats.total}</b> 天</span>
+        <span className="heat-stat">
+          本周打卡 <b>{stats.week}/7</b>
+        </span>
+        <span className="heat-stat">
+          当前连续 <b>{stats.streak}</b> 天
+        </span>
+        <span className="heat-stat">
+          近12周累计 <b>{stats.total}</b> 天
+        </span>
       </div>
 
       <div className="heat-detail" aria-live="polite">
@@ -195,21 +273,36 @@ function HeatMap({ records, am, leafNames, stats }: {
           shown ? (
             <>
               <span className="dt">{dLabel(show)}</span>
-              <span>点亮 <b className="dt">{shown.attrsLit.length}</b> 项</span>
+              <span>
+                点亮 <b className="dt">{shown.attrsLit.length}</b> 项
+              </span>
               {aNames.map((a) => (
-                <span key={a.id} className="chip-mini" style={{ background: a.tint, color: a.color }}>{a.name}</span>
+                <span
+                  key={a.id}
+                  className="chip-mini"
+                  style={{ background: a.tint, color: a.color }}
+                >
+                  {a.name}
+                </span>
               ))}
               {sNames.length > 0 && <span className="dim">技能：{sNames.join('、')}</span>}
             </>
           ) : (
-            <><span className="dt dim">{dLabel(show)}</span><span className="dim">未打卡</span></>
+            <>
+              <span className="dt dim">{dLabel(show)}</span>
+              <span className="dim">未打卡</span>
+            </>
           )
         ) : (
           <span className="dim">悬停或点按格子查看当天明细</span>
         )}
       </div>
 
-      <div className="heat-cols" aria-label="近 12 周记录热力图" onMouseLeave={() => setHoverKey(null)}>
+      <div
+        className="heat-cols"
+        aria-label="近 12 周记录热力图"
+        onMouseLeave={() => setHoverKey(null)}
+      >
         {cols.map((col, wi) => (
           <div className="heat-col" key={wi}>
             <div className="heat-col-head">{col.head}</div>
@@ -217,7 +310,14 @@ function HeatMap({ records, am, leafNames, stats }: {
               <button
                 key={c.key}
                 type="button"
-                className={['heat-cell', c.future ? 'future' : '', c.rec ? cls(c.rec.attrsLit.length) : '', c.key === today ? 'today' : ''].join(' ').trim()}
+                className={[
+                  'heat-cell',
+                  c.future ? 'future' : '',
+                  c.rec ? cls(c.rec.attrsLit.length) : '',
+                  c.key === today ? 'today' : '',
+                ]
+                  .join(' ')
+                  .trim()}
                 aria-label={c.key}
                 aria-pressed={pinKey === c.key}
                 onClick={() => setPinKey((k) => (k === c.key ? null : c.key))}
@@ -229,12 +329,27 @@ function HeatMap({ records, am, leafNames, stats }: {
       </div>
 
       <div className="heat-legend">
-        <span><i style={{ background: '#EFE7D2', boxShadow: 'inset 0 0 0 1px rgba(31,31,31,.06)' }} />无</span>
-        <span><i style={{ background: '#FFE3A8' }} />1</span>
-        <span><i style={{ background: '#FFB020' }} />2–3</span>
-        <span><i style={{ background: '#F97B4F' }} />4</span>
-        <span><i style={{ background: '#E2483D' }} />5–6</span>
-        <span className="leg-today"><i className="heat-cell today" />今天</span>
+        <span>
+          <i style={{ background: '#EFE7D2', boxShadow: 'inset 0 0 0 1px rgba(31,31,31,.06)' }} />无
+        </span>
+        <span>
+          <i style={{ background: '#FFE3A8' }} />1
+        </span>
+        <span>
+          <i style={{ background: '#FFB020' }} />
+          2–3
+        </span>
+        <span>
+          <i style={{ background: '#F97B4F' }} />4
+        </span>
+        <span>
+          <i style={{ background: '#E2483D' }} />
+          5–6
+        </span>
+        <span className="leg-today">
+          <i className="heat-cell today" />
+          今天
+        </span>
       </div>
     </>
   );
@@ -270,7 +385,9 @@ function Suggestions({
               <li key={a.id}>
                 <span className="sug-dot" style={{ background: a.color }} />
                 <span className="sug-name">{a.name}</span>
-                <span className="sug-lv" style={{ color: a.color }}>Lv {a.lv}</span>
+                <span className="sug-lv" style={{ color: a.color }}>
+                  Lv {a.lv}
+                </span>
               </li>
             ))}
           </ul>
@@ -297,7 +414,11 @@ function Suggestions({
                     {l.attrs
                       .filter(([aid]) => am[aid])
                       .map(([aid, w]) => (
-                        <span key={aid} className="sug-tag" style={{ color: am[aid]?.color, background: am[aid]?.tint }}>
+                        <span
+                          key={aid}
+                          className="sug-tag"
+                          style={{ color: am[aid]?.color, background: am[aid]?.tint }}
+                        >
                           {am[aid]?.name}·{Math.round(w * 100)}%
                         </span>
                       ))}
@@ -307,7 +428,9 @@ function Suggestions({
             ))}
           </ul>
         ) : (
-          <p className="sug-empty">{hasAttrs ? '暂无针对弱项的未勾选技能。' : '添加技能后将自动生成建议。'}</p>
+          <p className="sug-empty">
+            {hasAttrs ? '暂无针对弱项的未勾选技能。' : '添加技能后将自动生成建议。'}
+          </p>
         )}
       </div>
     </div>

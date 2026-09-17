@@ -1,7 +1,14 @@
 // 客户端数据访问：仅调用本地 RPC 端点，一律由服务端结算/派生（前端不重算，§4.2）。
-import { useQuery, useMutation, useQueryClient, keepPreviousData, type QueryKey } from '@tanstack/react-query';
+import {
+  useQuery,
+  useMutation,
+  useQueryClient,
+  keepPreviousData,
+  type QueryKey,
+} from '@tanstack/react-query';
 
-export type RpcResp<T> = { ok: true; data: T } | { ok: false; error: { code: string; message: string } };
+export type RpcResp<T> =
+  { ok: true; data: T } | { ok: false; error: { code: string; message: string } };
 
 /** Rust 引擎端口（soloup-server）。 */
 export const API_PORT = 8787;

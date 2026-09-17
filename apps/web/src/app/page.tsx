@@ -56,7 +56,12 @@ function Shell() {
   };
 
   const nav = (id: string, label: string) => (
-    <button key={id} className={tab === id ? 'active' : ''} onClick={() => go(id as TabId)} aria-label={label}>
+    <button
+      key={id}
+      className={tab === id ? 'active' : ''}
+      onClick={() => go(id as TabId)}
+      aria-label={label}
+    >
       <NavIcon name={id} />
       {label}
     </button>
@@ -89,8 +94,20 @@ function Shell() {
         {TABS.map((t) => nav(t.id, t.label))}
       </nav>
 
-      <AttrDrawer open={attrMgrOpen} onClose={() => setAttrMgrOpen(false)} state={state} dispatch={dispatch} toast={toast} />
-      <SettingsDrawer open={settingsOpen} onClose={() => setSettingsOpen(false)} state={state} dispatch={dispatch} toast={toast} />
+      <AttrDrawer
+        open={attrMgrOpen}
+        onClose={() => setAttrMgrOpen(false)}
+        state={state}
+        dispatch={dispatch}
+        toast={toast}
+      />
+      <SettingsDrawer
+        open={settingsOpen}
+        onClose={() => setSettingsOpen(false)}
+        state={state}
+        dispatch={dispatch}
+        toast={toast}
+      />
     </div>
   );
 }

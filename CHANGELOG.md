@@ -36,6 +36,10 @@
   `env!("CARGO_PKG_VERSION")` 编译期注入，不再在源码里手写（此前写死为 `0.1.0`）
 - 打包流程把 `apps/web/out` 一并复制进 `src-tauri/resources/web`，
   安装版同样能对外提供局域网页面
+- **全仓库按 Prettier 归一化**：仓库本来就带 `format` / `format:check` 脚本，
+  但代码从未格式化过，`pnpm format:check` 一直是失败状态。现已对齐
+  （纯格式变更：紧凑 CSS 展开为一行一声明、引号与十六进制色值大小写统一），
+  四条质量门 `typecheck` / `lint` / `test` / `format:check` 全部通过
 
 ### 修复
 

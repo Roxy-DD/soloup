@@ -7,9 +7,34 @@ import { attrMapOf, projectGains, todayKey } from '@/lib/model';
 import { Drawer } from './Drawer';
 import { useToast } from './Toast';
 
-export function ProjectsTab({ state, dispatch }: {
+export function ProjectsTab({
+  state,
+  dispatch,
+}: {
   state: AppState;
-  dispatch: (a: { type: 'PROJECT_ADD'; name: string; start: string; end?: string } | { type: 'PROJECT_UPDATE'; id: string; patch: Partial<{ name: string; start: string; end: string | null; status: string; color: string | null; description: string | null }> } | { type: 'PROJECT_EVENT'; projectId: string; event: { date: string; title: string; tags: string[]; gains: [string, number][] } } | { type: 'PROJECT_FINISH'; projectId: string; end: string } | { type: 'PROJECT_DELETE'; projectId: string }) => void;
+  dispatch: (
+    a:
+      | { type: 'PROJECT_ADD'; name: string; start: string; end?: string }
+      | {
+          type: 'PROJECT_UPDATE';
+          id: string;
+          patch: Partial<{
+            name: string;
+            start: string;
+            end: string | null;
+            status: string;
+            color: string | null;
+            description: string | null;
+          }>;
+        }
+      | {
+          type: 'PROJECT_EVENT';
+          projectId: string;
+          event: { date: string; title: string; tags: string[]; gains: [string, number][] };
+        }
+      | { type: 'PROJECT_FINISH'; projectId: string; end: string }
+      | { type: 'PROJECT_DELETE'; projectId: string },
+  ) => void;
 }) {
   const toast = useToast();
   const [formOpen, setFormOpen] = useState(false);
@@ -26,7 +51,11 @@ export function ProjectsTab({ state, dispatch }: {
   const am = attrMapOf(state.attrs);
 
   useEffect(() => {
-    if (formOpen) { setName(''); setStart(todayKey()); setEnd(''); }
+    if (formOpen) {
+      setName('');
+      setStart(todayKey());
+      setEnd('');
+    }
   }, [formOpen]);
 
   useEffect(() => {
@@ -39,18 +68,33 @@ export function ProjectsTab({ state, dispatch }: {
 
   const createProject = () => {
     const v = name.trim();
-    if (!v) { toast('请填写项目名称'); return; }
-    if (!start) { toast('请选择开始日期'); return; }
-    if (end && end < start) { toast('结束日期不能早于开始日期'); return; }
+    if (!v) {
+      toast('请填写项目名称');
+      return;
+    }
+    if (!start) {
+      toast('请选择开始日期');
+      return;
+    }
+    if (end && end < start) {
+      toast('结束日期不能早于开始日期');
+      return;
+    }
     dispatch({ type: 'PROJECT_ADD', name: v, start, end: end || undefined });
-    toast(end ? `项目「${v}」已创建 · ${start} → ${end}` : `项目「${v}」已创建 · ${start} 起 · 进行中`);
+    toast(
+      end ? `项目「${v}」已创建 · ${start} → ${end}` : `项目「${v}」已创建 · ${start} 起 · 进行中`,
+    );
     setFormOpen(false);
   };
 
   const finishProject = (p: Project) => {
     const t = todayKey();
     dispatch({ type: 'PROJECT_FINISH', projectId: p.id, end: t });
-    dispatch({ type: 'PROJECT_EVENT', projectId: p.id, event: { date: t, title: '项目完成', tags: [], gains: [] } });
+    dispatch({
+      type: 'PROJECT_EVENT',
+      projectId: p.id,
+      event: { date: t, title: '项目完成', tags: [], gains: [] },
+    });
     toast(`「${p.name}」已结束 · 周期 ${p.start} → ${t}`);
     setConfirmEnd(null);
   };
@@ -64,8 +108,14 @@ export function ProjectsTab({ state, dispatch }: {
   const submitEdit = () => {
     if (!editProject) return;
     const v = editName.trim();
-    if (!v) { toast('请填写项目名称'); return; }
-    if (editEnd && editEnd < editStart) { toast('结束日期不能早于开始日期'); return; }
+    if (!v) {
+      toast('请填写项目名称');
+      return;
+    }
+    if (editEnd && editEnd < editStart) {
+      toast('结束日期不能早于开始日期');
+      return;
+    }
     dispatch({
       type: 'PROJECT_UPDATE',
       id: editProject.id,
@@ -82,15 +132,18 @@ export function ProjectsTab({ state, dispatch }: {
     <section className="page" aria-label="项目与事件轴">
       <div className="section-title" style={{ marginTop: 4 }}>
         <h2>项目 · 事件轴</h2>
-        <button className="link-btn" onClick={() => setFormOpen(true)}>新建项目 +</button>
+        <button className="link-btn" onClick={() => setFormOpen(true)}>
+          新建项目 +
+        </button>
       </div>
       <p style={{ fontSize: 12, color: 'var(--text-2)', marginBottom: 12 }}>
         项目只需设定时间范围 · 周期内打卡的技能与属性自动归入，无需手动绑定
       </p>
 
       {state.projects.map((p) => {
-        const validDays = state.records.filter((r) =>
-          r.date >= p.start && (!p.end || r.date <= p.end) && r.skillIds.length > 0).length;
+        const validDays = state.records.filter(
+          (r) => r.date >= p.start && (!p.end || r.date <= p.end) && r.skillIds.length > 0,
+        ).length;
         const gains = projectGains(state.records, p);
         const maxG = Math.max(1, ...gains.map((g) => g.count));
         const isLatest = latestDoing?.id === p.id;
@@ -100,11 +153,21 @@ export function ProjectsTab({ state, dispatch }: {
               <span className={`st ${p.status}`} />
               <h3>{p.name}</h3>
               {isLatest && p.status === 'doing' && (
-                <span className="tag" style={{ color: 'var(--blue)', background: 'var(--blue-tint, #E8EEFC)', fontSize: 11 }}>最新</span>
+                <span
+                  className="tag"
+                  style={{
+                    color: 'var(--blue)',
+                    background: 'var(--blue-tint, #E8EEFC)',
+                    fontSize: 11,
+                  }}
+                >
+                  最新
+                </span>
               )}
             </div>
             <div className="proj-date">
-              {p.start} → {p.end ?? '进行中'} · {p.status === 'done' ? '已结束' : '进行中'} · 有效打卡 {validDays} 天
+              {p.start} → {p.end ?? '进行中'} · {p.status === 'done' ? '已结束' : '进行中'} ·
+              有效打卡 {validDays} 天
             </div>
             {p.events.length > 0 && (
               <div className="timeline">
@@ -116,9 +179,15 @@ export function ProjectsTab({ state, dispatch }: {
                     </div>
                     {(ev.tags.length > 0 || ev.gains.length > 0) && (
                       <div className="tags">
-                        {ev.tags.map((t) => <span key={t}>{t}</span>)}
+                        {ev.tags.map((t) => (
+                          <span key={t}>{t}</span>
+                        ))}
                         {ev.gains.map(([aid, n]) => (
-                          <span key={aid} className="attr" style={{ '--c': am[aid]?.color } as React.CSSProperties}>
+                          <span
+                            key={aid}
+                            className="attr"
+                            style={{ '--c': am[aid]?.color } as React.CSSProperties}
+                          >
                             {am[aid]?.name ?? aid} +{n}
                           </span>
                         ))}
@@ -129,7 +198,9 @@ export function ProjectsTab({ state, dispatch }: {
               </div>
             )}
             <div className="section-title" style={{ margin: '8px 0 4px' }}>
-              <h2 style={{ fontSize: 13, color: 'var(--text-2)', fontWeight: 900 }}>周期内能力收益（自动统计）</h2>
+              <h2 style={{ fontSize: 13, color: 'var(--text-2)', fontWeight: 900 }}>
+                周期内能力收益（自动统计）
+              </h2>
             </div>
             {gains.length > 0 ? (
               <div className="gain">
@@ -139,8 +210,19 @@ export function ProjectsTab({ state, dispatch }: {
                   return (
                     <div className="g-row" key={attrId}>
                       <span className="g-name">{a.name}</span>
-                      <span className="g-bar"><i style={{ '--c': a.color, width: `${(count / maxG) * 100}%` } as React.CSSProperties} /></span>
-                      <span className="g-val" style={{ '--c': a.color } as React.CSSProperties}>+{count} 天</span>
+                      <span className="g-bar">
+                        <i
+                          style={
+                            {
+                              '--c': a.color,
+                              width: `${(count / maxG) * 100}%`,
+                            } as React.CSSProperties
+                          }
+                        />
+                      </span>
+                      <span className="g-val" style={{ '--c': a.color } as React.CSSProperties}>
+                        +{count} 天
+                      </span>
                     </div>
                   );
                 })}
@@ -153,78 +235,155 @@ export function ProjectsTab({ state, dispatch }: {
               </div>
             )}
             <div className="form-ops" style={{ marginTop: 12 }}>
-              <button className="btn-ghost" onClick={() => setEditProject(p)}>编辑</button>
-              {p.status === 'doing' && (
-                confirmEnd === p.id ? (
+              <button className="btn-ghost" onClick={() => setEditProject(p)}>
+                编辑
+              </button>
+              {p.status === 'doing' &&
+                (confirmEnd === p.id ? (
                   <>
-                    <button className="btn-primary" onClick={() => finishProject(p)}>确认结束（{todayKey()}）</button>
-                    <button className="btn-ghost" onClick={() => setConfirmEnd(null)}>再想想</button>
+                    <button className="btn-primary" onClick={() => finishProject(p)}>
+                      确认结束（{todayKey()}）
+                    </button>
+                    <button className="btn-ghost" onClick={() => setConfirmEnd(null)}>
+                      再想想
+                    </button>
                   </>
                 ) : (
-                  <button className={isLatest ? 'btn-primary' : 'btn-ghost'} onClick={() => setConfirmEnd(p.id)}>
+                  <button
+                    className={isLatest ? 'btn-primary' : 'btn-ghost'}
+                    onClick={() => setConfirmEnd(p.id)}
+                  >
                     结束项目
                   </button>
-                )
-              )}
+                ))}
               {confirmDelete === p.id ? (
                 <>
-                  <button className="btn-primary" style={{ background: 'var(--red)', borderColor: 'var(--red)' }} onClick={() => deleteProject(p)}>确认删除</button>
-                  <button className="btn-ghost" onClick={() => setConfirmDelete(null)}>取消</button>
+                  <button
+                    className="btn-primary"
+                    style={{ background: 'var(--red)', borderColor: 'var(--red)' }}
+                    onClick={() => deleteProject(p)}
+                  >
+                    确认删除
+                  </button>
+                  <button className="btn-ghost" onClick={() => setConfirmDelete(null)}>
+                    取消
+                  </button>
                 </>
               ) : (
-                <button className="btn-ghost" style={{ color: 'var(--red)' }} onClick={() => setConfirmDelete(p.id)}>删除项目</button>
+                <button
+                  className="btn-ghost"
+                  style={{ color: 'var(--red)' }}
+                  onClick={() => setConfirmDelete(p.id)}
+                >
+                  删除项目
+                </button>
               )}
-              <button className="btn-ghost" onClick={() => setFormOpen(true)}>+ 新项目</button>
+              <button className="btn-ghost" onClick={() => setFormOpen(true)}>
+                + 新项目
+              </button>
             </div>
           </div>
         );
       })}
       {state.projects.length === 0 && (
-        <div className="card" style={{ textAlign: 'center', color: 'var(--text-3)' }}>还没有项目 · 点击右上角「新建项目」开始</div>
+        <div className="card" style={{ textAlign: 'center', color: 'var(--text-3)' }}>
+          还没有项目 · 点击右上角「新建项目」开始
+        </div>
       )}
 
       <Drawer open={formOpen} title="新建项目" onClose={() => setFormOpen(false)} label="新建项目">
         <div className="fld">
           <label htmlFor="p-name">项目名称</label>
-          <input id="p-name" type="text" placeholder="例如：毕业论文攻坚" maxLength={20}
-            value={name} onChange={(e) => setName(e.target.value)}
-            onKeyDown={(e) => { if (e.key === 'Enter') createProject(); }} />
+          <input
+            id="p-name"
+            type="text"
+            placeholder="例如：毕业论文攻坚"
+            maxLength={20}
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') createProject();
+            }}
+          />
         </div>
         <div className="fld">
           <label htmlFor="p-start">开始日期</label>
-          <input id="p-start" type="date" value={start} onChange={(e) => setStart(e.target.value)} />
+          <input
+            id="p-start"
+            type="date"
+            value={start}
+            onChange={(e) => setStart(e.target.value)}
+          />
         </div>
         <div className="fld">
           <label htmlFor="p-end">结束日期（留空 = 进行中，之后可随时用「结束项目」收尾）</label>
-          <input id="p-end" type="date" value={end} min={start} onChange={(e) => setEnd(e.target.value)} />
+          <input
+            id="p-end"
+            type="date"
+            value={end}
+            min={start}
+            onChange={(e) => setEnd(e.target.value)}
+          />
         </div>
         <p style={{ fontSize: 12, color: 'var(--text-3)', margin: '4px 0 10px' }}>
           创建后无需绑定技能——周期内每天的打卡会自动归入本项目，属性收益实时推导。
         </p>
         <div className="form-ops">
-          <button className="btn-primary" onClick={createProject}>创建项目</button>
-          <button className="btn-ghost" onClick={() => setFormOpen(false)}>取消</button>
+          <button className="btn-primary" onClick={createProject}>
+            创建项目
+          </button>
+          <button className="btn-ghost" onClick={() => setFormOpen(false)}>
+            取消
+          </button>
         </div>
       </Drawer>
 
-      <Drawer open={!!editProject} title="编辑项目" onClose={() => setEditProject(null)} label="编辑项目">
+      <Drawer
+        open={!!editProject}
+        title="编辑项目"
+        onClose={() => setEditProject(null)}
+        label="编辑项目"
+      >
         <div className="fld">
           <label htmlFor="e-name">项目名称</label>
-          <input id="e-name" type="text" placeholder="项目名称" maxLength={20}
-            value={editName} onChange={(e) => setEditName(e.target.value)}
-            onKeyDown={(e) => { if (e.key === 'Enter') submitEdit(); }} />
+          <input
+            id="e-name"
+            type="text"
+            placeholder="项目名称"
+            maxLength={20}
+            value={editName}
+            onChange={(e) => setEditName(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') submitEdit();
+            }}
+          />
         </div>
         <div className="fld">
           <label htmlFor="e-start">开始日期</label>
-          <input id="e-start" type="date" value={editStart} onChange={(e) => setEditStart(e.target.value)} />
+          <input
+            id="e-start"
+            type="date"
+            value={editStart}
+            onChange={(e) => setEditStart(e.target.value)}
+          />
         </div>
         <div className="fld">
           <label htmlFor="e-end">结束日期（留空 = 进行中）</label>
-          <input id="e-end" type="date" value={editEnd} min={editStart} onChange={(e) => setEditEnd(e.target.value)} />
+          <input
+            id="e-end"
+            type="date"
+            value={editEnd}
+            min={editStart}
+            onChange={(e) => setEditEnd(e.target.value)}
+          />
         </div>
         <div className="form-ops">
-          <button className="btn-primary" onClick={submitEdit}>保存</button>
-          <button className="btn-ghost" onClick={() => setEditProject(null)}>取消</button>
+          <button className="btn-primary" onClick={submitEdit}>
+            保存
+          </button>
+          <button className="btn-ghost" onClick={() => setEditProject(null)}>
+            取消
+          </button>
         </div>
       </Drawer>
     </section>
