@@ -411,3 +411,8 @@ input[type=range] { accent-color: var(--red); width: 120px; }
   * { animation: none !important; transition: none !important; }
 }
 html.no-motion * { animation: none !important; transition: none !important; }
+
+/* ===== 局域网二维码 ===== */
+/* 后端返回的 SVG 自带尺寸属性，这里统一收敛到抽屉宽度内的固定尺寸 */
+.lan-qr { background: #fff; border: 2px solid var(--ink); border-radius: 8px; padding: 8px; box-shadow: 3px 3px 0 var(--ink); line-height: 0; }
+.lan-qr svg { width: 168px; height: 168px; display: block; }

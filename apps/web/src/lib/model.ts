@@ -1,35 +1,11 @@
-/* ================= 增长模型 · 日期工具 · 树工具 · 统计推导 ================= */
-import type { AchStats, AppState, Attr, DayRecord, SkillGroup, SkillLeaf, SkillTreeNode } from './types';
+/* ================= 展示映射 · 日期工具 · 树工具 · 统计推导 =================
+   成长曲线（等级 / 级内进度）全部由后端 soloup-core 派生，随 bootstrap 一起下发，
+   本文件不再包含任何曲线公式。这里只保留「等级 → 段位 / 配色」这类纯展示映射。 */
+import type { AchCondition, AchStats, AppState, Attr, DayRecord, SkillGroup, SkillLeaf, SkillTreeNode } from './types';
 import { isLeaf } from './types';
 
-/* ---------- 增长公式（设计文档 4 节） ---------- */
+/** 属性面板等级上限（后端 value 值域 0–100，面板折半后为 0–50 级）。仅用于雷达图等展示刻度。 */
 export const ATTR_LV_MAX = 50;
-
-/** 属性：LV = ⌊5·ln(1+EP/3)⌋，EP 每属性每天封顶 +1 */
-export function attrLv(ep: number): number {
-  return Math.min(ATTR_LV_MAX, Math.floor(5 * Math.log(1 + Math.max(0, ep) / 3)));
-}
-
-/** 升到 n 级所需 EP：3·(e^(n/5) − 1) */
-export function epForLevel(n: number): number {
-  return 3 * (Math.exp(n / 5) - 1);
-}
-
-/** 属性当前级内进度 0–1（真实推导，无演示偏移） */
-export function attrFrac(ep: number): number {
-  if (attrLv(ep) >= ATTR_LV_MAX) return 1;
-  return (5 * Math.log(1 + Math.max(0, ep) / 3)) % 1;
-}
-
-/** 技能：LV = ⌊4·ln(1+uses/2)⌋ */
-export function skillLv(uses: number): number {
-  return Math.floor(4 * Math.log(1 + Math.max(0, uses) / 2));
-}
-
-/** 技能当前级内进度 0–1 */
-export function skillFrac(uses: number): number {
-  return (4 * Math.log(1 + Math.max(0, uses) / 2)) % 1;
-}
 
 export const TIERS: [number, string][] = [
   [1, '见习Ⅰ'], [5, '熟练Ⅱ'], [10, '精通Ⅲ'], [15, '大师Ⅳ'], [20, '宗师Ⅴ'],
@@ -162,8 +138,8 @@ export function deriveStats(state: AppState): AchStats {
   }
 
   const maxLitOneDay = records.reduce((m, r) => Math.max(m, r.attrsLit.length), 0);
-  const maxAttrLv = attrs.reduce((m, a) => Math.max(m, attrLv(a.ep)), 0);
-  const maxSkillLv = collectLeaves(skills).reduce((m, l) => Math.max(m, skillLv(l.uses)), 0);
+  const maxAttrLv = attrs.reduce((m, a) => Math.max(m, a.lv), 0);
+  const maxSkillLv = collectLeaves(skills).reduce((m, l) => Math.max(m, l.lv), 0);
   const skillCheckinCounts = new Map<string, number>();
   for (const r of records) {
     for (const sid of r.skillIds) {
@@ -173,6 +149,61 @@ export function deriveStats(state: AppState): AchStats {
   const maxSkillCheckins = skillCheckinCounts.size > 0 ? Math.max(...skillCheckinCounts.values()) : 0;
   const projectsDone = projects.filter((p) => p.status === 'done').length;
   return { totalDays, streak, maxLitOneDay, maxAttrLv, maxSkillLv, maxSkillCheckins, projectsDone, totalAttrs: attrs.length };
+}
+
+/* ---------- 成就：条件 DSL → 进度展示 ---------- */
+
+const fmtNum = (n: number) => n.toLocaleString('en-US');
+
+/**
+ * 条件里的统计量名（后端口径）→ 面板统计值。
+ * 两边名字并非完全一致（后端 projectsCompleted ↔ 面板 projectsDone），这里是唯一的翻译点。
+ * 不认识的统计量返回 undefined，调用方按「无法评估」处理。
+ */
+export function achStatValue(s: AchStats, name: string): number | undefined {
+  switch (name) {
+    case 'totalDays': return s.totalDays;
+    case 'streak': return s.streak;
+    case 'maxLitOneDay': return s.maxLitOneDay;
+    case 'maxSkillLv': return s.maxSkillLv;
+    case 'maxSkillCheckins': return s.maxSkillCheckins;
+    case 'projectsCompleted': return s.projectsDone;
+    case 'totalAttrs': return s.totalAttrs;
+    default: return undefined;
+  }
+}
+
+/** 统计量 → 进度文案（「当前 / 目标 单位」）。未登记的统计量退化为裸数字。 */
+const STAT_TEXT: Record<string, (cur: number, target: number) => string> = {
+  totalDays: (c, t) => `已记录 ${c} / ${t} 天`,
+  streak: (c, t) => `当前连续 ${c} / ${t} 天`,
+  maxLitOneDay: (c, t) => `单日最高点亮 ${c} / ${t} 项`,
+  maxSkillLv: (c, t) => `当前最高技能 LV ${c} / ${t}`,
+  maxSkillCheckins: (c, t) => `累计打卡 ${fmtNum(c)} / ${fmtNum(t)} 天`,
+  projectsCompleted: (c, t) => `已完成 ${c} / ${t} 个项目`,
+  totalAttrs: (c, t) => `单日最高点亮 ${c} / ${t} 项`,
+};
+
+export interface AchProgress {
+  /** 卡背进度文案 */
+  text: string;
+  /** 进度比例（0–1），供 revealAt 渐进揭示判断 */
+  ratio: number;
+}
+
+/**
+ * 条件 + 当前统计值 → 进度。右值既可能是常量阈值（value），
+ * 也可能指向另一个统计量（ref，如「单日点亮数 ≥ 属性总数」）。
+ * 无条件 / 统计量不认识时返回 null，页面按「条件尚未达成」呈现。
+ */
+export function achProgress(stats: AchStats, cond: AchCondition | null): AchProgress | null {
+  if (!cond) return null;
+  const cur = achStatValue(stats, cond.stat);
+  if (cur === undefined) return null;
+  const target = cond.ref ? achStatValue(stats, cond.ref) : cond.value;
+  if (target === undefined) return null;
+  const text = (STAT_TEXT[cond.stat] ?? ((c: number, t: number) => `${c} / ${t}`))(cur, target);
+  return { text, ratio: target > 0 ? Math.min(cur / target, 1) : 0 };
 }
 
 /** 本周（周一起）记录天数 */
@@ -210,14 +241,14 @@ export function attrMapOf(attrs: Attr[]): Record<string, Attr> {
 /* ---------- 今日建议：弱项属性 + 推荐技能（纯函数，便于复用与单测） ---------- */
 
 /**
- * 取今日仍未点亮的弱项属性：按 EP 升序，最多 3 项。
+ * 取今日仍未点亮的弱项属性：按当前值升序（越低越是弱项），最多 3 项。
  * - 全部为 0 时返回前 3 项（让新手也能看到建议）。
  * - 属性不足 3 项时按实际数量返回。
  */
 export function weakAttrsOf(state: AppState, litAttrIds: ReadonlySet<string>, max = 3): Attr[] {
   const all = [...state.attrs];
   const rest = all.filter((a) => !litAttrIds.has(a.id));
-  rest.sort((a, b) => a.ep - b.ep);
+  rest.sort((a, b) => a.value - b.value);
   return rest.slice(0, max);
 }
 
@@ -241,7 +272,7 @@ export function suggestedSkillsOf(
       return { leaf: l, covers, gain };
     })
     .filter((s) => s.covers > 0);
-  scored.sort((a, b) => b.covers - a.covers || b.gain - a.gain || b.leaf.uses - a.leaf.uses);
+  scored.sort((a, b) => b.covers - a.covers || b.gain - a.gain || b.leaf.checkins - a.leaf.checkins);
   return scored.slice(0, max).map((s) => s.leaf);
 }
 

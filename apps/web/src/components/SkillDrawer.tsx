@@ -2,7 +2,7 @@
 /* ================= 技能抽屉：view / edit / move / add 四态 + 归档删除二次确认 ================= */
 import React, { useEffect, useRef, useState } from 'react';
 import type { AppState, SkillLeaf } from '@/lib/types';
-import { attrMapOf, collectBranches, findLeaf, parentPathOf, skillLv, skillFrac, tierColor, tierOf } from '@/lib/model';
+import { attrMapOf, collectBranches, findLeaf, parentPathOf, tierColor, tierOf } from '@/lib/model';
 import { Drawer } from './Drawer';
 
 export interface DrawerState {
@@ -278,15 +278,15 @@ export function SkillDrawer({ state, drawer, setDrawer, dispatch, toast, seq, se
               </div>
             )}
             <div style={{ marginTop: 12, marginBottom: 8 }}>
-              <span className="tier" style={{ color: tierColor(skillLv(leaf.uses)), borderColor: tierColor(skillLv(leaf.uses)), fontSize: 12, padding: '3px 10px' }}>
-                {tierOf(skillLv(leaf.uses))} · LV {skillLv(leaf.uses)}
+              <span className="tier" style={{ color: tierColor(leaf.lv), borderColor: tierColor(leaf.lv), fontSize: 12, padding: '3px 10px' }}>
+                {tierOf(leaf.lv)} · LV {leaf.lv}
               </span>
               <div className="bar" style={{ maxWidth: 220 }}>
-                <i style={{ width: `${Math.round(skillFrac(leaf.uses) * 100)}%`, background: tierColor(skillLv(leaf.uses)) }} />
+                <i style={{ width: `${Math.round(leaf.frac * 100)}%`, background: tierColor(leaf.lv) }} />
               </div>
             </div>
             <div style={{ fontSize: 13, color: 'var(--text-2)' }}>
-              累计使用 <b style={{ color: 'var(--ink)' }}>{leaf.uses}</b> 次 · 所属：{curPath || '根目录'}
+              累计打卡 <b style={{ color: 'var(--ink)' }}>{leaf.checkins}</b> 天 · 所属：{curPath || '根目录'}
             </div>
             <div style={{ fontSize: 13, color: 'var(--text-2)', marginTop: 8 }}>关联属性</div>
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 6 }}>

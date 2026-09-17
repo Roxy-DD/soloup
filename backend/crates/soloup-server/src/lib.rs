@@ -119,7 +119,9 @@ fn actor_of(a: Args) -> AuditActor {
 pub fn dispatch(solver: &mut Solver, op: &str, args: &Value) -> Result<Value, RpcError> {
     match op {
         "meta" => Ok(json!({
-            "app": "soloup", "version": "0.1.0-rust", "date": today_iso(),
+            // 版本号取自 crate 版本（backend/Cargo.toml 的 workspace.package.version），
+            // 不再手写，避免发版时漏改。
+            "app": "soloup", "version": concat!(env!("CARGO_PKG_VERSION"), "-rust"), "date": today_iso(),
             "enum": {
                 "skill_category": ["physical","cognitive","knowledge"],
                 "difficulty": ["casual","normal","hard","challenge","legendary"],
@@ -255,15 +257,24 @@ pub fn dispatch(solver: &mut Solver, op: &str, args: &Value) -> Result<Value, Rp
                     );
                 }
             }
+            // 累计打卡天数：前端「×N 次」直接用这个真实计数，
+            // 不再从派生等级反推（反推值会随曲线放大成无意义的数量级）。
+            let mut checkin_map: HashMap<String, i64> = HashMap::new();
+            for r in solver.store.daily().list_records(None, None)? {
+                for sid in solver.store.daily().skill_ids_on(&r.date)? {
+                    *checkin_map.entry(sid).or_insert(0) += 1;
+                }
+            }
             fn build(
                 skills: &[Skill],
                 parent: Option<&str>,
                 levels: &HashMap<String, f64>,
                 links: &HashMap<String, Vec<(String, f64)>>,
+                checkins: &HashMap<String, i64>,
             ) -> Vec<Value> {
                 let mut out = Vec::new();
                 for s in skills.iter().filter(|x| x.parent_id.as_deref() == parent) {
-                    let kids = build(skills, Some(&s.id), levels, links);
+                    let kids = build(skills, Some(&s.id), levels, links, checkins);
                     let leaf = !s.is_branch && kids.is_empty();
                     let attrs: Vec<Value> = links
                         .get(&s.id)
@@ -273,6 +284,7 @@ pub fn dispatch(solver: &mut Solver, op: &str, args: &Value) -> Result<Value, Rp
                         "id": s.id, "name": s.name, "category": s.category,
                         "difficulty": s.difficulty, "leaf": leaf, "archived": s.archived_at.is_some(),
                         "level": levels.get(&s.id).copied().unwrap_or(0.0),
+                        "checkins": checkins.get(&s.id).copied().unwrap_or(0),
                         "e": s.c + s.v, "c": s.c, "v": s.v,
                         "attrs": attrs,
                         "children": kids
@@ -280,7 +292,7 @@ pub fn dispatch(solver: &mut Solver, op: &str, args: &Value) -> Result<Value, Rp
                 }
                 out
             }
-            Ok(json!(build(&skills, None, &levels, &link_map)))
+            Ok(json!(build(&skills, None, &levels, &link_map, &checkin_map)))
         }
 
         "attributes" => {
@@ -705,17 +717,10 @@ pub fn dispatch(solver: &mut Solver, op: &str, args: &Value) -> Result<Value, Rp
             let total_attrs = stats.get("totalAttrs").and_then(|v| v.as_i64()).unwrap_or(0);
             let done = stats.get("projectsCompleted").and_then(|v| v.as_i64()).unwrap_or(0);
             let max_skill_checkins = stats.get("maxSkillCheckins").and_then(|v| v.as_i64()).unwrap_or(0);
-            let unlocked = |id: &str, cond: &Option<Value>| match id {
-                "first" => total_days >= 1,
-                "twin" => max_lit >= 2,
-                "week7" => streak >= 7,
-                "dawn" => max_lv >= 4.0,
-                "d100" => total_days >= 100,
-                "allsix" => total_attrs > 0 && max_lit >= total_attrs,
-                "done1" => done >= 1,
-                "grand" => max_lv >= 20.0,
-                "tenk" => max_skill_checkins >= 10000,
-                _ => eval_condition(cond, total_days, streak, max_lv, max_lit, total_attrs, done, max_skill_checkins),
+            // 全部成就统一走条件求值：内置成就的条件存放在 achievements.condition_json
+            // （首次播种见 seed.rs；老库由 V4 迁移补齐）。新增成就只需写数据，不必改这里。
+            let unlocked = |cond: &Option<Value>| {
+                eval_condition(cond, total_days, streak, max_lv, max_lit, total_attrs, done, max_skill_checkins)
             };
             Ok(json!(list
                 .iter()
@@ -724,7 +729,7 @@ pub fn dispatch(solver: &mut Solver, op: &str, args: &Value) -> Result<Value, Rp
                     "type": a.r#type, "rarity": a.rarity, "points": a.points,
                     "condition": a.condition_json,
                     "hidden": a.hidden, "requires": a.requires, "reveal_at": a.reveal_at,
-                    "unlocked": unlocked(&a.id, &a.condition_json)
+                    "unlocked": unlocked(&a.condition_json)
                 }))
                 .collect::<Vec<_>>()))
         }
@@ -955,11 +960,146 @@ pub fn dispatch(solver: &mut Solver, op: &str, args: &Value) -> Result<Value, Rp
             Ok(json!({ "settled": effects.len() }))
         }
 
+        // 局域网服务：开关持久化在 settings 表，即时生效（服务端每次请求实时读取）。
+        "lan.status" => Ok(lan_status(solver)),
+
+        "lan.set" => {
+            let enabled = args.get("enabled").and_then(|v| v.as_bool()).ok_or_else(|| RpcError {
+                code: "ERR_VALIDATION".into(),
+                message: "缺少布尔字段 enabled".into(),
+            })?;
+            solver
+                .store
+                .settings()
+                .set(LAN_ENABLED_KEY, if enabled { "1" } else { "0" })?;
+            Ok(lan_status(solver))
+        }
+
+        // 局域网访问地址的二维码（SVG）。未开启或无地址时两项均为 null。
+        "lan.qr" => {
+            let status = lan_status(solver);
+            match status.get("url").and_then(|v| v.as_str()) {
+                Some(url) => Ok(json!({ "url": url, "svg": lan_qr_svg(url) })),
+                None => Ok(json!({ "url": Value::Null, "svg": Value::Null })),
+            }
+        }
+
         _ => Err(RpcError {
             code: "ERR_UNKNOWN_OP".into(),
             message: format!("未知 op：{op}"),
         }),
     }
+}
+
+/* ========================= 局域网服务 ========================= */
+
+/// settings 表中局域网开关的键（值为 "1" / "0"）。
+pub const LAN_ENABLED_KEY: &str = "lan_enabled";
+/// 后端默认端口（与 main.rs 保持一致）。
+pub const DEFAULT_SERVER_PORT: u16 = 8787;
+
+/// 探测本机在默认路由上实际使用的局域网 IPv4。
+///
+/// 做法：向公网地址建一个 UDP socket 并 connect。UDP 无连接，
+/// 这一步**不会真的发出数据包**，只是让操作系统按路由表选出出口网卡，
+/// 于是 local_addr() 就是该网卡的地址。相比遍历网卡，它天然跳过
+/// Hyper-V / WSL / VMware 那类虚拟网卡，拿到的正是手机能连上的地址。
+pub fn local_lan_ip() -> Option<String> {
+    use std::net::UdpSocket;
+    let sock = UdpSocket::bind("0.0.0.0:0").ok()?;
+    if sock.connect("8.8.8.8:80").is_err() && sock.connect("1.1.1.1:80").is_err() {
+        return None;
+    }
+    let ip = sock.local_addr().ok()?.ip();
+    if ip.is_loopback() || ip.is_unspecified() {
+        None
+    } else {
+        Some(ip.to_string())
+    }
+}
+
+/// 前端静态产物目录（`apps/web/out`）。
+///
+/// 优先级：显式环境变量 → 打包布局（sidecar 同级 `web/`）→ 仓库开发布局。
+/// 都找不到时返回一个不存在的路径，由 ServeDir 自然 404，不影响 API。
+pub fn resolve_web_dir() -> std::path::PathBuf {
+    use std::path::PathBuf;
+    if let Ok(p) = std::env::var("SOLOUP_WEB_DIR") {
+        if !p.trim().is_empty() {
+            return PathBuf::from(p);
+        }
+    }
+    let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+    let exe_dir = std::env::current_exe()
+        .ok()
+        .and_then(|p| p.parent().map(|d| d.to_path_buf()))
+        .unwrap_or_else(|| cwd.clone());
+
+    let candidates = [
+        exe_dir.join("web"),                                 // 打包后：sidecar 同级
+        exe_dir.join("resources").join("web"),               // Tauri resources 布局
+        cwd.join("apps").join("web").join("out"),            // 从仓库根运行
+        cwd.join("..").join("apps").join("web").join("out"), // 从 backend/ 运行
+        exe_dir
+            .join("..")
+            .join("..")
+            .join("..")
+            .join("apps")
+            .join("web")
+            .join("out"), // backend/target/debug 一路回退到仓库根
+    ];
+    for c in candidates {
+        if c.join("index.html").is_file() {
+            return c;
+        }
+    }
+    cwd.join("apps").join("web").join("out")
+}
+
+/// 局域网服务状态（lan.status 与 lan.set 共用的返回体）。
+fn lan_status(solver: &Solver) -> Value {
+    let enabled = solver
+        .store
+        .settings()
+        .get(LAN_ENABLED_KEY)
+        .ok()
+        .flatten()
+        .as_deref()
+        == Some("1");
+    let port: u16 = std::env::var("SOLOUP_PORT")
+        .ok()
+        .and_then(|p| p.parse().ok())
+        .unwrap_or(DEFAULT_SERVER_PORT);
+    let ip = local_lan_ip();
+    json!({
+        "enabled": enabled,
+        "port": port,
+        "ip": ip,
+        "url": ip.as_ref().map(|i| format!("http://{i}:{port}/")),
+        "webReady": resolve_web_dir().join("index.html").is_file(),
+    })
+}
+
+/// 生成二维码 SVG（供手机扫码直达局域网地址）。
+///
+/// 纠错级别 M（约 15% 容错）足够应付手机拍摄的角度与反光；
+/// 前景固定深墨色、背景纯白，保证浅色卡片上的对比度。
+/// 返回值已剥掉 XML 声明，可直接内联进 HTML。
+fn lan_qr_svg(url: &str) -> Option<String> {
+    use qrcode::render::svg;
+    let code =
+        qrcode::QrCode::with_error_correction_level(url.as_bytes(), qrcode::EcLevel::M).ok()?;
+    let svg = code
+        .render::<svg::Color>()
+        .min_dimensions(200, 200)
+        .dark_color(svg::Color("#1F1F1F"))
+        .light_color(svg::Color("#FFFFFF"))
+        .build();
+    Some(
+        svg.strip_prefix(r#"<?xml version="1.0" standalone="yes"?>"#)
+            .unwrap_or(&svg)
+            .to_string(),
+    )
 }
 
 fn is_leaf(skills: &[Skill], id: &str) -> bool {
@@ -968,7 +1108,9 @@ fn is_leaf(skills: &[Skill], id: &str) -> bool {
     })
 }
 
-/// 评估自定义成就条件（简化版 stat_threshold DSL）。
+/// 评估成就条件（stat_threshold DSL）。
+/// 右值默认取 `value`（常量阈值）；若给出 `ref`，则取另一个统计量的当前值 ——
+/// 用于「两个统计量互相比」的条件，例如 allsix：单日点亮数 ≥ 属性总数。
 fn eval_condition(
     cond: &Option<Value>,
     total_days: i64,
@@ -985,23 +1127,34 @@ fn eval_condition(
     };
     let stat = cond.get("stat").and_then(|v| v.as_str()).unwrap_or("");
     let operator = cond.get("operator").and_then(|v| v.as_str()).unwrap_or(">=");
-    let value = cond.get("value").and_then(|v| v.as_f64()).unwrap_or(0.0);
-    let actual: f64 = match stat {
-        "totalDays" => total_days as f64,
-        "streak" => streak as f64,
-        "maxSkillLv" => max_lv,
-        "maxLitOneDay" => max_lit as f64,
-        "totalAttrs" => total_attrs as f64,
-        "projectsCompleted" => done as f64,
-        "maxSkillCheckins" => max_skill_checkins as f64,
-        _ => return false,
+    let stat_value = |name: &str| -> Option<f64> {
+        match name {
+            "totalDays" => Some(total_days as f64),
+            "streak" => Some(streak as f64),
+            "maxSkillLv" => Some(max_lv),
+            "maxLitOneDay" => Some(max_lit as f64),
+            "totalAttrs" => Some(total_attrs as f64),
+            "projectsCompleted" => Some(done as f64),
+            "maxSkillCheckins" => Some(max_skill_checkins as f64),
+            _ => None,
+        }
+    };
+    let Some(actual) = stat_value(stat) else {
+        return false;
+    };
+    let target = match cond.get("ref").and_then(|v| v.as_str()) {
+        Some(r) => match stat_value(r) {
+            Some(v) => v,
+            None => return false,
+        },
+        None => cond.get("value").and_then(|v| v.as_f64()).unwrap_or(0.0),
     };
     match operator {
-        ">=" => actual >= value,
-        ">" => actual > value,
-        "==" => actual == value,
-        "<=" => actual <= value,
-        "<" => actual < value,
+        ">=" => actual >= target,
+        ">" => actual > target,
+        "==" => actual == target,
+        "<=" => actual <= target,
+        "<" => actual < target,
         _ => false,
     }
 }

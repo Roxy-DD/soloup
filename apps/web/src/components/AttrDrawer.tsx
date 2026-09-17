@@ -2,7 +2,7 @@
 /* ================= 属性管理抽屉：列表 + 新建/编辑表单 + 删除二次确认 ================= */
 import React, { useEffect, useRef, useState } from 'react';
 import type { AppState } from '@/lib/types';
-import { attrLv, collectLeavesAll } from '@/lib/model';
+import { collectLeavesAll } from '@/lib/model';
 import { ATTR_PALETTE } from '@/lib/seed';
 import { Drawer } from './Drawer';
 
@@ -86,7 +86,7 @@ export function AttrDrawer({ open, onClose, state, dispatch, toast }: {
                 <span className="sw" style={{ background: a.color }} />
                 <span className="nm2">{a.name}</span>
                 <span className="en2">{a.en}</span>
-                <span className="lv2">LV{attrLv(a.ep)}</span>
+                <span className="lv2">LV{a.lv}</span>
                 <span className="sp" />
                 <button className="icon-btn" disabled={i === 0} onClick={() => dispatch({ type: 'ATTR_MOVE', index: i, dir: -1 })} aria-label={`上移${a.name}`}>↑</button>
                 <button className="icon-btn" disabled={i === state.attrs.length - 1} onClick={() => dispatch({ type: 'ATTR_MOVE', index: i, dir: 1 })} aria-label={`下移${a.name}`}>↓</button>

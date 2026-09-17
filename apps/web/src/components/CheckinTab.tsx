@@ -270,7 +270,7 @@ function Suggestions({
               <li key={a.id}>
                 <span className="sug-dot" style={{ background: a.color }} />
                 <span className="sug-name">{a.name}</span>
-                <span className="sug-lv" style={{ color: a.color }}>Lv {Math.floor(5 * Math.log(1 + Math.max(0, a.ep) / 3))}</span>
+                <span className="sug-lv" style={{ color: a.color }}>Lv {a.lv}</span>
               </li>
             ))}
           </ul>

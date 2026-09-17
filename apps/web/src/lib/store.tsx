@@ -4,7 +4,7 @@
  * 本文件只做两件事：① 后端数据 ⇄ 视图模型映射；② 把写操作转发为 RPC（成功后重取）。
  */
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
-import type { AppState, Attr, Project, Settings, SkillGroup, SkillTreeNode } from './types';
+import type { AchCondition, AchievementDef, AppState, Attr, Project, Rarity, Settings, SkillGroup, SkillTreeNode } from './types';
 import { rpc } from './api';
 import { seedState } from './seed';
 import { todayKey } from './model';
@@ -16,7 +16,7 @@ export interface RustAttribute {
 }
 export interface RustTreeNode {
   id: string; name: string; leaf: boolean; archived: boolean;
-  level: number; attrs: [string, number][]; children: RustTreeNode[];
+  level: number; checkins: number; attrs: [string, number][]; children: RustTreeNode[];
 }
 export interface RustRecord {
   date: string; skillIds: string[]; attrsLit: string[];
@@ -26,7 +26,14 @@ export interface RustProject {
   id: string; name: string; description: string | null;
   startDate: string; endDate: string | null; status: string; color: string | null;
 }
-export interface RustAchievement { id: string; unlocked: boolean }
+/** 后端下发的成就行：rarity / type 是 snake_case 英文枚举，condition 是 stat 阈值 DSL */
+export interface RustAchievement {
+  id: string; name: string; description: string | null;
+  type: string; rarity: string; points: number;
+  condition: unknown;
+  hidden: boolean; requires: string[] | null; reveal_at: number | null;
+  unlocked: boolean;
+}
 export interface Bootstrap {
   date: string;
   attributes: RustAttribute[];
@@ -41,20 +48,49 @@ export interface Bootstrap {
 }
 
 /* ---------- 映射：后端派生值 → 视图模型 ---------- */
-/** 属性：视图按 attrLv(ep)=⌊5·ln(1+ep/3)⌋ 展示，令其等于后端 ⌊value/2⌋（value∈[0,100] → 等级 0–50） */
-export const epFromValue = (value: number) => 3 * (Math.exp(Math.max(0, value) / 10) - 1);
-/** 技能：视图按 skillLv(uses)=⌊4·ln(1+uses/2)⌋ 展示，令其等于后端 level */
-export const usesFromLevel = (level: number) => 2 * (Math.exp(Math.max(0, level) / 4) - 1);
+/**
+ * 连续数值 → { 面板等级, 当前级内进度 }。
+ * 只做「向下取整 + 取小数部分」这种纯数值拆分，不包含任何成长曲线公式——
+ * 曲线（指数饱和 / Sigmoid）完全由后端 soloup-core 决定，这里只负责把它的输出摆到界面上。
+ */
+const splitLevel = (raw: number): { lv: number; frac: number } => {
+  const v = Number.isFinite(raw) ? Math.max(0, raw) : 0;
+  const lv = Math.floor(v);
+  return { lv, frac: v - lv };
+};
+
+/** 属性面板满级：后端 value 值域 0–100，面板按折半展示为 0–50 级。 */
+const ATTR_DISPLAY_DIVISOR = 2;
 
 const FALLBACK_COLOR = '#1F2937';
 const tintOf = (color: string | null) => (color ?? FALLBACK_COLOR) + '22';
+
+/** 后端枚举（snake_case 英文）→ 面板中文稀有度 */
+const RARITY_ZH: Record<string, Rarity> = {
+  common: '普通', rare: '稀有', epic: '史诗', legendary: '传说',
+};
+
+/** 条件 JSON → 视图侧结构；形状非法或为空时返回 null（等于「无判定条件」）。 */
+function mapCondition(raw: unknown): AchCondition | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const c = raw as Record<string, unknown>;
+  if (typeof c.stat !== 'string') return null;
+  return {
+    stat: c.stat,
+    operator: typeof c.operator === 'string' ? c.operator : '>=',
+    ...(typeof c.value === 'number' ? { value: c.value } : {}),
+    ...(typeof c.ref === 'string' ? { ref: c.ref } : {}),
+  };
+}
 
 function mapNode(n: RustTreeNode): SkillTreeNode {
   if (n.leaf) {
     const leaf: import('./types').SkillLeaf = {
       id: n.id,
       name: n.name,
-      uses: usesFromLevel(n.level),
+      level: n.level,
+      ...splitLevel(n.level),
+      checkins: n.checkins ?? 0,
       attrs: (n.attrs ?? []) as [string, number][],
     };
     if (n.archived) leaf.archived = true;
@@ -70,7 +106,8 @@ function mapBootstrap(b: Bootstrap): AppState {
     en: a.name,
     color: a.color ?? FALLBACK_COLOR,
     tint: tintOf(a.color),
-    ep: epFromValue(a.value),
+    value: a.value,
+    ...splitLevel(a.value / ATTR_DISPLAY_DIVISOR),
   }));
 
   const projects: Project[] = b.projects.map((p) => ({
@@ -82,6 +119,20 @@ function mapBootstrap(b: Bootstrap): AppState {
     events: [],
   }));
 
+  const achievements: AchievementDef[] = (b.achievements ?? []).map((a) => ({
+    id: a.id,
+    name: a.name,
+    desc: a.description ?? '',
+    rarity: RARITY_ZH[a.rarity] ?? '普通',
+    points: a.points,
+    type: a.type,
+    condition: mapCondition(a.condition),
+    hidden: a.hidden === true,
+    requires: a.requires ?? [],
+    revealAt: a.reveal_at ?? null,
+  }));
+
+  // 解锁判定由后端按 condition 求值给出（unlocked_at 列不落库），面板按当天日期展示
   const unlocked: Record<string, string> = {};
   for (const a of b.achievements ?? []) if (a.unlocked) unlocked[a.id] = todayKey();
 
@@ -104,6 +155,7 @@ function mapBootstrap(b: Bootstrap): AppState {
       date: r.date, skillIds: r.skillIds ?? [], attrsLit: r.attrsLit ?? [],
     })),
     projects,
+    achievements,
     unlocked,
     settings,
   };

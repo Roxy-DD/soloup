@@ -2,7 +2,7 @@
 /* ================= 雷达图：3–8 轴动态 SVG；>8 自动降级为 LV 排行条 ================= */
 import React from 'react';
 import type { Attr } from '@/lib/types';
-import { ATTR_LV_MAX, attrLv } from '@/lib/model';
+import { ATTR_LV_MAX } from '@/lib/model';
 
 export function RadarViewTitle(n: number): string {
   return n > 8 ? '属性排行' : n === 6 ? '六维属性' : `${n} 维属性`;
@@ -14,7 +14,7 @@ export function Radar({ attrs }: { attrs: Attr[] }) {
 
   // 超过 8 轴 → 排行条视图
   if (N > 8) {
-    const sorted = [...attrs].sort((a, b) => attrLv(b.ep) - attrLv(a.ep));
+    const sorted = [...attrs].sort((a, b) => b.lv - a.lv);
     return (
       <div>
         <div style={{ fontSize: 12, color: 'var(--text-3)', marginBottom: 10 }}>
@@ -24,9 +24,9 @@ export function Radar({ attrs }: { attrs: Attr[] }) {
           <div key={a.id} style={{ display: 'flex', alignItems: 'center', gap: 10, margin: '8px 0' }}>
             <span style={{ width: 34, fontWeight: 700, fontSize: 13, color: a.color }}>{a.name}</span>
             <span style={{ flex: 1, height: 12, border: '2px solid var(--ink)', borderRadius: 3, background: 'var(--track)', overflow: 'hidden' }}>
-              <i style={{ display: 'block', height: '100%', width: `${Math.min(100, Math.round((attrLv(a.ep) / MAX) * 100))}%`, background: a.color }} />
+              <i style={{ display: 'block', height: '100%', width: `${Math.min(100, Math.round((a.lv / MAX) * 100))}%`, background: a.color }} />
             </span>
-            <b style={{ fontFamily: 'var(--px)', fontSize: 11, color: a.color, width: 30, textAlign: 'right' }}>{attrLv(a.ep)}</b>
+            <b style={{ fontFamily: 'var(--px)', fontSize: 11, color: a.color, width: 30, textAlign: 'right' }}>{a.lv}</b>
           </div>
         ))}
       </div>
@@ -44,7 +44,7 @@ export function Radar({ attrs }: { attrs: Attr[] }) {
 
   const rings = [18.4, 36.8, 55.2, 73.6, 92];
   const dp = attrs
-    .map((a, i) => pt(i, (R * Math.min(MAX, attrLv(a.ep))) / MAX).map((v) => v.toFixed(1)).join(','))
+    .map((a, i) => pt(i, (R * Math.min(MAX, a.lv)) / MAX).map((v) => v.toFixed(1)).join(','))
     .join(' ');
 
   return (
@@ -58,7 +58,7 @@ export function Radar({ attrs }: { attrs: Attr[] }) {
       })}
       <polygon className="rd" points={dp} fill="rgba(255,176,32,.30)" stroke="#E2483D" strokeWidth="2.5" strokeLinejoin="round" />
       {attrs.map((a, i) => {
-        const r = (R * Math.min(MAX, attrLv(a.ep))) / MAX;
+        const r = (R * Math.min(MAX, a.lv)) / MAX;
         const [x, y] = pt(i, r);
         return <circle key={a.id} cx={x.toFixed(1)} cy={y.toFixed(1)} r="4" fill={a.color} stroke="#1F1F1F" strokeWidth="1.5" />;
       })}
@@ -80,7 +80,7 @@ export function Radar({ attrs }: { attrs: Attr[] }) {
           >
             <tspan fill={a.color}>{a.name}</tspan>
             {' '}
-            <tspan fill="#7A7260">LV{attrLv(a.ep)}</tspan>
+            <tspan fill="#7A7260">LV{a.lv}</tspan>
           </text>
         );
       })}

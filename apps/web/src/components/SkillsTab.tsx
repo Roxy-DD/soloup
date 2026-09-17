@@ -2,7 +2,7 @@
 /* ================= 技能页：技能树（可折叠）+ 规则卡 ================= */
 import React, { useState } from 'react';
 import type { AppState, SkillGroup, SkillLeaf, SkillTreeNode } from '@/lib/types';
-import { countLeaves, skillLv, tierColor, tierOf } from '@/lib/model';
+import { countLeaves, tierColor, tierOf } from '@/lib/model';
 import { SkillDrawer, type DrawerState } from './SkillDrawer';
 
 type SkillAction =
@@ -80,7 +80,7 @@ export function SkillsTab({ state, dispatch, toast }: {
 
   const renderNode = (node: SkillTreeNode, gi: number, path: string): React.ReactNode => {
     if (!('ch' in node)) {
-      const lv = skillLv(node.uses);
+      const lv = node.lv;
       return (
         <li key={node.id}>
           <div className="tree-node leaf" onClick={() => openLeaf(node.id)}
@@ -91,7 +91,7 @@ export function SkillsTab({ state, dispatch, toast }: {
             <span className="tier" style={{ color: tierColor(lv), borderColor: tierColor(lv) }}>
               {tierOf(lv)} {lv}
             </span>
-            <span className="uses">×{node.uses}</span>
+            <span className="uses">×{node.checkins}</span>
           </div>
         </li>
       );

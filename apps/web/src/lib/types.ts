@@ -1,23 +1,35 @@
 /* ================= 人生 RPG 面板 · 类型定义 ================= */
 
-/** 属性（体质/智力/创造…）：ep 为累计经验，LV 由公式从 ep 推导，不直接存储 */
+/** 属性（体质/智力/创造…）：数值全部由后端派生，前端只负责展示，不再本地推导 */
 export interface Attr {
   id: string;
   name: string;
   en: string;
   color: string; // 深字色
   tint: string; // 淡底色（WCAG AA 配对）
-  ep: number;
+  /** 后端派生的连续值（0–100） */
+  value: number;
+  /** 面板等级（0–50），由 value 折半取整得到 */
+  lv: number;
+  /** 当前等级内的进度（0–1） */
+  frac: number;
 }
 
 /** 属性色板项：[深字色, 淡底色] */
 export type PalettePair = [string, string];
 
-/** 叶子技能：可被打卡，uses 为累计使用次数 */
+/** 叶子技能：可被打卡；等级由后端曲线派生，前端不再自行推导 */
 export interface SkillLeaf {
   id: string;
   name: string;
-  uses: number;
+  /** 后端派生的连续等级（0–100） */
+  level: number;
+  /** 面板等级（整数，= ⌊level⌋） */
+  lv: number;
+  /** 当前等级内的进度（0–1） */
+  frac: number;
+  /** 累计打卡天数（后端按每日记录统计） */
+  checkins: number;
   /** 关联属性 [attrId, 权重]，1–3 项，权重和为 1 */
   attrs: [string, number][];
   archived?: boolean;
@@ -89,23 +101,35 @@ export interface AchStats {
   totalAttrs: number;
 }
 
+/** 成就条件 DSL（后端 achievements.condition_json）：左侧取一个统计量，右侧取常量阈值或另一个统计量 */
+export interface AchCondition {
+  /** 左侧统计量名（后端 stats 口径：totalDays / streak / maxLitOneDay / maxSkillLv / maxSkillCheckins / projectsCompleted / totalAttrs） */
+  stat: string;
+  /** 比较符：>= > == <= < */
+  operator: string;
+  /** 常量阈值；与 ref 二选一 */
+  value?: number;
+  /** 右值改取另一个统计量（如 allsix：单日点亮数 ≥ 属性总数） */
+  ref?: string;
+}
+
+/** 成就定义：全部字段来自后端 achievements 表（名称/描述/稀有度/揭示/条件），前端不再持有定义常量。
+ *  图标与配色属于展示资源，由页面按 id / rarity 映射，不入此结构。 */
 export interface AchievementDef {
   id: string;
   name: string;
-  rarity: Rarity;
-  rc: string;
-  icon: string; // icons.tsx 中的 key
   desc: string;
-  legendary?: boolean;
-  hidden?: boolean; // 隐藏成就：未解锁时显示 ???，已解锁后揭示
+  rarity: Rarity;
+  points: number;
+  /** 后端枚举字符串：skill / attribute / project / milestone */
+  type: string;
+  condition: AchCondition | null;
+  /** 隐藏成就：未解锁时按 revealAt 渐进揭示，而非直接展示 */
+  hidden: boolean;
   /** 前置成就 id 列表：全部解锁后该卡才开始显现 */
-  requires?: string[];
-  /** 隐藏卡渐进揭示阈值（0–1）：进度达到此比例时显示名称和提示 */
-  revealAt?: number;
-  /** 达成条件（基于统计值判定） */
-  check: (s: AchStats) => boolean;
-  /** 未解锁时卡背进度文案 */
-  prog?: (s: AchStats) => string;
+  requires: string[];
+  /** 渐进揭示阈值（0–1）：进度达到此比例时显示名称和提示 */
+  revealAt: number | null;
 }
 
 export interface AppState {
@@ -114,6 +138,8 @@ export interface AppState {
   skills: SkillGroup[];
   records: DayRecord[];
   projects: Project[];
+  /** 成就定义（后端 achievements 表下发） */
+  achievements: AchievementDef[];
   /** 成就解锁表：id → 解锁日期 */
   unlocked: Record<string, string>;
   settings: Settings;

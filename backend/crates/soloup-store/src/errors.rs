@@ -14,6 +14,8 @@ pub enum StoreErrorCode {
     Cycle,
     NewerSchema,
     CorruptSettings,
+    /// 迁移前的自动备份失败（磁盘满 / 无写权限等）——宁可不开服，也不裸奔迁移。
+    BackupFailed,
 }
 
 impl StoreErrorCode {
@@ -29,6 +31,7 @@ impl StoreErrorCode {
             StoreErrorCode::Cycle => "ERR_CYCLE",
             StoreErrorCode::NewerSchema => "ERR_NEWER_SCHEMA",
             StoreErrorCode::CorruptSettings => "ERR_SETTINGS_CORRUPT",
+            StoreErrorCode::BackupFailed => "ERR_BACKUP_FAILED",
         }
     }
 }

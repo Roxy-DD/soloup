@@ -2,7 +2,7 @@
 /* ================= 面板页：Hero + 雷达 + 属性卡 + 生命进度轴 ================= */
 import React from 'react';
 import type { AppState, Attr } from '@/lib/types';
-import { attrFrac, attrLv, collectLeaves, parseKey, skillFrac, skillLv, tierColor, tierOf, todayKey, weekDays } from '@/lib/model';
+import { collectLeaves, parseKey, tierColor, tierOf, todayKey, weekDays } from '@/lib/model';
 import { Radar, RadarViewTitle } from './Radar';
 import { GearIcon } from './icons';
 
@@ -16,7 +16,7 @@ export function DashboardTab({ state, onCheckin, onOpenAttrMgr, onOpenSettings, 
   const { attrs, records, settings } = state;
   const today = todayKey();
   const litToday = new Set(records.find((r) => r.date === today)?.attrsLit ?? []);
-  const totalLv = Math.round(attrs.reduce((s, a) => s + attrLv(a.ep), 0) / Math.max(1, attrs.length));
+  const totalLv = Math.round(attrs.reduce((s, a) => s + a.lv, 0) / Math.max(1, attrs.length));
 
   return (
     <section className="page" aria-label="角色面板">
@@ -85,8 +85,8 @@ function HeroStreak({ records }: { records: AppState['records'] }) {
 }
 
 export function AttrCard({ attr, lit }: { attr: Attr; lit: boolean }) {
-  const lv = attrLv(attr.ep);
-  const frac = Math.round(attrFrac(attr.ep) * 100);
+  const lv = attr.lv;
+  const frac = Math.round(attr.frac * 100);
   return (
     <div className={`attr-card${lit ? ' lit' : ''}`} style={{ '--ac': attr.color, '--at': attr.tint } as React.CSSProperties}>
       <div className="attr-ico">{attr.name[0]}</div>
@@ -138,8 +138,8 @@ function LifeBar({ settings }: { settings: AppState['settings'] }) {
 function TopSkills({ skills, onOpenSkill }: { skills: AppState['skills']; onOpenSkill: (id: string) => void }) {
   const leaves = collectLeaves(skills);
   const top = leaves
-    .map((l) => ({ leaf: l, lv: skillLv(l.uses) }))
-    .sort((a, b) => b.lv - a.lv || b.leaf.uses - a.leaf.uses)
+    .map((l) => ({ leaf: l, lv: l.lv }))
+    .sort((a, b) => b.lv - a.lv || b.leaf.checkins - a.leaf.checkins)
     .slice(0, 5);
 
   if (top.length === 0) return null;
@@ -154,7 +154,7 @@ function TopSkills({ skills, onOpenSkill }: { skills: AppState['skills']; onOpen
       </div>
       <div className="top-skills-list">
         {top.map(({ leaf, lv }, i) => {
-          const frac = Math.round(skillFrac(leaf.uses) * 100);
+          const frac = Math.round(leaf.frac * 100);
           return (
             <div key={leaf.id} className="top-skill-item" onClick={() => onOpenSkill(leaf.id)}
               role="button" tabIndex={0}
@@ -168,7 +168,7 @@ function TopSkills({ skills, onOpenSkill }: { skills: AppState['skills']; onOpen
               <div className="skill-bar-wrap">
                 <div className="skill-bar-fill" style={{ width: `${frac}%`, background: tierColor(lv) }} />
               </div>
-              <span className="uses-count">×{leaf.uses}</span>
+              <span className="uses-count">×{leaf.checkins}</span>
             </div>
           );
         })}

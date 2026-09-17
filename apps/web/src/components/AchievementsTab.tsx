@@ -1,21 +1,36 @@
 'use client';
-/* ================= 成就页：收集进度 + 卡牌墙（3D 翻面 + SSR v3 光效） ================= */
+/* ================= 成就页：收集进度 + 卡牌墙（3D 翻面 + SSR v3 光效） =================
+   成就定义（名称 / 描述 / 稀有度 / 隐藏与前置 / 达成条件）全部来自后端 achievements 表，
+   前端只保留两类展示映射：稀有度 → 配色与代号、成就 id → 图标 key。
+   进度文案由条件 DSL 通用生成（见 model.achProgress），不再按 id 写死。 */
 import React, { useMemo, useState } from 'react';
-import type { AppState, Rarity, AchStats } from '@/lib/types';
-import { deriveStats } from '@/lib/model';
-import { ACHIEVEMENTS } from '@/lib/seed';
+import type { AchStats, AchievementDef, AppState, Rarity } from '@/lib/types';
+import { achProgress, deriveStats } from '@/lib/model';
 import { AchIcon } from './icons';
 
 const RARITY_CODE: Record<Rarity, string> = { 普通: 'N', 稀有: 'R', 史诗: 'SR', 传说: 'SSR' };
 const RARITY_COLOR: Record<Rarity, string> = { 普通: 'var(--rn)', 稀有: 'var(--rr)', 史诗: 'var(--rsr)', 传说: 'var(--rssr)' };
+/** 卡面主色（CSS 变量 --rc），与稀有度一一对应 */
+const RARITY_RC: Record<Rarity, string> = { 普通: '#6B7280', 稀有: '#2F6FED', 史诗: '#7C3AED', 传说: '#FFB020' };
+/** 成就 id → 图标 key（icons.tsx）；纯展示资源，未登记的（自定义）成就走默认星形 */
+const ACH_ICON: Record<string, string> = {
+  first: 'star', twin: 'twin', week7: 'moon', dawn: 'sun', d100: 'mountain',
+  allsix: 'gem', done1: 'scroll', grand: 'crown', tenk: 'scroll',
+};
+const iconOf = (id: string) => ACH_ICON[id] ?? 'star';
 
 export function AchievementsTab({ state }: { state: AppState }) {
   const stats = useMemo(() => deriveStats(state), [state]);
-  const unlockedCount = ACHIEVEMENTS.filter((a) => state.unlocked[a.id]).length;
-  const total = ACHIEVEMENTS.length;
+  // 后端按 type/rarity/name 排序下发；面板改按难度分（points）升序摆放，梯度从易到难
+  const list = useMemo(
+    () => [...state.achievements].sort((a, b) => a.points - b.points || a.id.localeCompare(b.id)),
+    [state.achievements],
+  );
+  const total = list.length;
+  const unlockedCount = list.filter((a) => state.unlocked[a.id]).length;
 
   const byRarity = (r: Rarity) => {
-    const all = ACHIEVEMENTS.filter((a) => a.rarity === r);
+    const all = list.filter((a) => a.rarity === r);
     const got = all.filter((a) => state.unlocked[a.id]).length;
     return { all: all.length, got };
   };
@@ -29,12 +44,13 @@ export function AchievementsTab({ state }: { state: AppState }) {
           <div className="coll-bar">
             {(['普通', '稀有', '史诗', '传说'] as Rarity[]).map((r) => {
               const { all, got } = byRarity(r);
-              return <i key={r} style={{ width: `${(all / total) * 100}%`, background: RARITY_COLOR[r], position: 'relative' }}>
-                {got > 0 && <i style={{ position: 'absolute', inset: 0, width: `${(got / all) * 100}%`, background: RARITY_COLOR[r], borderRight: '2px solid var(--card)' }} />}
+              const w = total > 0 ? (all / total) * 100 : 0;
+              return <i key={r} style={{ width: `${w}%`, background: RARITY_COLOR[r], position: 'relative' }}>
+                {got > 0 && all > 0 && <i style={{ position: 'absolute', inset: 0, width: `${(got / all) * 100}%`, background: RARITY_COLOR[r], borderRight: '2px solid var(--card)' }} />}
               </i>;
             })}
           </div>
-          <div className="coll-pct">{Math.round((unlockedCount / total) * 100)}%</div>
+          <div className="coll-pct">{total > 0 ? Math.round((unlockedCount / total) * 100) : 0}%</div>
         </div>
         <div className="coll-legend">
           {(['普通', '稀有', '史诗', '传说'] as Rarity[]).map((r) => {
@@ -50,30 +66,36 @@ export function AchievementsTab({ state }: { state: AppState }) {
       </div>
 
       <div className="card-wall">
-        {ACHIEVEMENTS.map((a) => {
-          const unlocked = !!state.unlocked[a.id];
-          const date = state.unlocked[a.id];
-          return <Acard key={a.id} def={a} unlocked={unlocked} date={date} stats={stats} unlockedMap={state.unlocked} />;
-        })}
+        {list.map((a, index) => (
+          <Acard
+            key={a.id}
+            def={a}
+            no={index + 1}
+            unlocked={!!state.unlocked[a.id]}
+            date={state.unlocked[a.id]}
+            stats={stats}
+            unlockedMap={state.unlocked}
+          />
+        ))}
       </div>
     </section>
   );
 }
 
-function Acard({ def, unlocked, date, stats, unlockedMap }: {
-  def: (typeof ACHIEVEMENTS)[number];
+function Acard({ def, no, unlocked, date, stats, unlockedMap }: {
+  def: AchievementDef;
+  no: number;
   unlocked: boolean;
   date?: string;
   stats: AchStats;
   unlockedMap: Record<string, string>;
 }) {
   const [flip, setFlip] = useState(false);
-  const legendary = def.legendary && unlocked;
+  const legendary = def.rarity === '传说' && unlocked;
   const epic = def.rarity === '史诗' && unlocked;
 
-  const depsMet = !def.requires?.length || def.requires.every((id) => !!unlockedMap[id]);
-  const progText = def.prog?.(stats);
-  const hasProg = !!progText;
+  const depsMet = def.requires.length === 0 || def.requires.every((id) => !!unlockedMap[id]);
+  const prog = achProgress(stats, def.condition);
 
   let showName: boolean;
   let showDesc: boolean;
@@ -87,9 +109,8 @@ function Acard({ def, unlocked, date, stats, unlockedMap }: {
       showName = false;
       showDesc = false;
       deepLocked = true;
-    } else if (def.revealAt && hasProg) {
-      const progVal = estimateProgress(stats, def);
-      if (progVal >= def.revealAt) {
+    } else if (def.revealAt != null && prog) {
+      if (prog.ratio >= def.revealAt) {
         showName = true;
         showDesc = true;
       } else {
@@ -110,7 +131,7 @@ function Acard({ def, unlocked, date, stats, unlockedMap }: {
   return (
     <div
       className={`acard${flip ? ' flip' : ''}${unlocked ? '' : ' locked'}${legendary ? ' legendary' : ''}${epic ? ' epic' : ''}${deepLocked ? ' deep-locked' : ''}`}
-      style={{ '--rc': def.rc } as React.CSSProperties}
+      style={{ '--rc': RARITY_RC[def.rarity] } as React.CSSProperties}
       onClick={() => setFlip((f) => !f)}
       role="button"
       tabIndex={0}
@@ -128,7 +149,7 @@ function Acard({ def, unlocked, date, stats, unlockedMap }: {
           <div className={`rtag${def.rarity === '传说' ? ' rtag-ink' : ''}`}>{RARITY_CODE[def.rarity]}</div>
           <div className="face-mat">
             <div className="gem" />
-            <div className="aicon"><AchIcon name={def.icon} /></div>
+            <div className="aicon"><AchIcon name={iconOf(def.id)} /></div>
             <div className="aname">{showName ? def.name : '？？？'}</div>
             <div className="rarity-tag">{def.rarity} · <span className="pxcode">{RARITY_CODE[def.rarity]}</span></div>
             <div className="adesc">
@@ -139,7 +160,7 @@ function Acard({ def, unlocked, date, stats, unlockedMap }: {
             </div>
             <div className="afoot">
               <span>{footLabel}</span>
-              <span className="pxcode" style={{ fontSize: 10 }}>NO.{String(ACHIEVEMENTS.indexOf(def) + 1).padStart(3, '0')}</span>
+              <span className="pxcode" style={{ fontSize: 10 }}>NO.{String(no).padStart(3, '0')}</span>
             </div>
           </div>
         </div>
@@ -149,7 +170,7 @@ function Acard({ def, unlocked, date, stats, unlockedMap }: {
           <div style={{ fontSize: 11, color: 'var(--text-2)', textAlign: 'center', padding: '0 14px' }}>
             {unlocked ? '点击翻回正面'
               : deepLocked ? '需要先解锁前置成就'
-              : hasProg ? `进度：${progText}`
+              : prog ? `进度：${prog.text}`
               : '条件尚未达成'}
           </div>
         </div>
@@ -157,12 +178,4 @@ function Acard({ def, unlocked, date, stats, unlockedMap }: {
       <div className="hint">点击翻面</div>
     </div>
   );
-}
-
-function estimateProgress(stats: AchStats, def: (typeof ACHIEVEMENTS)[number]): number {
-  const id = def.id;
-  if (id === 'first') return Math.min(stats.totalDays / 1, 1);
-  if (id === 'twin') return Math.min(stats.maxLitOneDay / 2, 1);
-  if (id === 'allsix') return Math.min(stats.maxLitOneDay / stats.totalAttrs, 1);
-  return 0;
 }

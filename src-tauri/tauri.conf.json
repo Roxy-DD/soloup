@@ -1,10 +1,10 @@
 {
   "productName": "Soloup",
-  "version": "1.0.1",
+  "version": "1.1.0",
   "identifier": "com.soloup.app",
   "build": {
     "frontendDist": "../apps/web/out",
-    "beforeBuildCommand": "pnpm --filter @soloup/core build && pnpm --filter @soloup/store build && pnpm --filter @soloup/solver build && pnpm --filter @soloup/web build",
+    "beforeBuildCommand": "pnpm --filter @soloup/web build",
     "beforeDevCommand": "pnpm --filter @soloup/web dev",
     "devUrl": "http://localhost:3000"
   },
@@ -34,7 +34,7 @@
       "icons/128x128@2x.png"
     ],
     "externalBin": ["resources/soloup-server", "resources/soloup-mcp"],
-    "resources": [],
+    "resources": ["resources/web"],
     "windows": {
       "nsis": {
         "installMode": "currentUser"

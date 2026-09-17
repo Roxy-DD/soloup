@@ -113,35 +113,36 @@ pub const SEED_PROJECTS: &[(&str, &str, &str, &str, Option<&str>, ProjectStatus)
 ];
 
 pub fn seed_achievements() -> Vec<Achievement> {
-    let defs: &[(&str, &str, &str, AchievementType, Rarity, i64, bool, bool, &[&str], Option<f64>)] = &[
-        // id, name, desc, type, rarity, points, legendary, hidden, requires, reveal_at
-        ("first",  "初次觉醒", "完成第一次每日记录",       AchievementType::Milestone, Rarity::Common,    10, false, true,  &[],        Some(0.5)),
-        ("twin",   "双线并进", "单日点亮 2 项以上属性",   AchievementType::Attribute, Rarity::Common,    20, false, true,  &["first"],  Some(0.5)),
-        ("week7",  "七日之约", "连续记录 7 天不间断",     AchievementType::Milestone, Rarity::Rare,      30, false, false, &[],        None),
-        ("dawn",   "破晓之光", "任一技能达到 4 级",       AchievementType::Skill,     Rarity::Rare,      40, false, false, &[],        None),
-        ("d100",   "百日筑基", "累计记录 100 天",         AchievementType::Milestone, Rarity::Epic,     100, false, false, &[],        None),
-        ("allsix", "六艺俱全", "单日点亮全部属性",       AchievementType::Attribute, Rarity::Epic,     120, false, true,  &["twin"],   Some(0.4)),
-        ("done1",  "完稿",     "完成第一个项目",          AchievementType::Project,   Rarity::Legendary, 150, true,  false, &["week7","dawn"], None),
-        ("grand",  "宗师之路", "任一技能达到 20 级",      AchievementType::Skill,     Rarity::Legendary, 200, true,  false, &["dawn"],   None),
-        ("tenk",   "万时之功", "某个技能累计打卡 10,000 天", AchievementType::Skill,  Rarity::Legendary, 300, true,  false, &["d100"],   None),
+    // id, name, desc, type, rarity, points, hidden, requires, reveal_at, condition_json
+    //
+    // condition_json 采用成就条件 DSL：{"stat": <统计量>, "operator": <比较符>, "value": <阈值>}。
+    // 需要「两个统计量互相比较」时用 "ref" 顶替 "value"（见 allsix：单日点亮数 ≥ 属性总数）。
+    // 新增成就无需改 Rust：往 achievements 表插一行并写好 condition_json 即可。
+    let defs: &[(&str, &str, &str, AchievementType, Rarity, i64, bool, &[&str], Option<f64>, &str)] = &[
+        // id, name, desc, type, rarity, points, hidden, requires, reveal_at, condition
+        ("first",  "初次觉醒", "完成第一次每日记录",          AchievementType::Milestone,  Rarity::Common,    10,  true,  &[],              Some(0.5), r#"{"stat":"totalDays","operator":">=","value":1}"#),
+        ("twin",   "双线并进", "单日点亮 2 项以上属性",       AchievementType::Attribute,  Rarity::Common,    20,  true,  &["first"],       Some(0.5), r#"{"stat":"maxLitOneDay","operator":">=","value":2}"#),
+        ("week7",  "七日之约", "连续记录 7 天不间断",         AchievementType::Milestone,  Rarity::Rare,      30,  false, &[],              None,      r#"{"stat":"streak","operator":">=","value":7}"#),
+        ("dawn",   "破晓之光", "任一技能达到 4 级",           AchievementType::Skill,      Rarity::Rare,      40,  false, &[],              None,      r#"{"stat":"maxSkillLv","operator":">=","value":4}"#),
+        ("d100",   "百日筑基", "累计记录 100 天",             AchievementType::Milestone,  Rarity::Epic,     100,  false, &[],              None,      r#"{"stat":"totalDays","operator":">=","value":100}"#),
+        ("allsix", "六艺俱全", "单日点亮全部属性",            AchievementType::Attribute,  Rarity::Epic,     120,  true,  &["twin"],        Some(0.4), r#"{"stat":"maxLitOneDay","operator":">=","ref":"totalAttrs"}"#),
+        ("done1",  "完稿",     "完成第一个项目",              AchievementType::Project,    Rarity::Legendary, 150, false, &["week7","dawn"], None,     r#"{"stat":"projectsCompleted","operator":">=","value":1}"#),
+        ("grand",  "宗师之路", "任一技能达到 20 级",          AchievementType::Skill,      Rarity::Legendary, 200, false, &["dawn"],        None,      r#"{"stat":"maxSkillLv","operator":">=","value":20}"#),
+        ("tenk",   "万时之功", "某个技能累计打卡 10,000 天",  AchievementType::Skill,      Rarity::Legendary, 300, false, &["d100"],        None,      r#"{"stat":"maxSkillCheckins","operator":">=","value":10000}"#),
     ];
     defs.iter()
-        .map(|(id, name, desc, t, r, points, legendary, hidden, requires, reveal_at)| {
-            let mut cond = serde_json::Map::new();
-            if *legendary { cond.insert("legendary".into(), serde_json::json!(true)); }
-            Achievement {
-                id: (*id).to_string(),
-                name: (*name).to_string(),
-                description: Some((*desc).to_string()),
-                condition_json: if cond.is_empty() { None } else { Some(serde_json::Value::Object(cond)) },
-                r#type: *t,
-                rarity: *r,
-                points: *points,
-                unlocked_at: None,
-                hidden: *hidden,
-                requires: requires.iter().map(|s| s.to_string()).collect(),
-                reveal_at: *reveal_at,
-            }
+        .map(|(id, name, desc, t, r, points, hidden, requires, reveal_at, cond)| Achievement {
+            id: (*id).to_string(),
+            name: (*name).to_string(),
+            description: Some((*desc).to_string()),
+            condition_json: serde_json::from_str(cond).ok(),
+            r#type: *t,
+            rarity: *r,
+            points: *points,
+            unlocked_at: None,
+            hidden: *hidden,
+            requires: requires.iter().map(|s| s.to_string()).collect(),
+            reveal_at: *reveal_at,
         })
         .collect()
 }

@@ -5,6 +5,49 @@ import type { AppState } from '@/lib/types';
 import { Drawer } from './Drawer';
 import { checkMcpHealth, getMcpToolCount, rpc } from '@/lib/api';
 
+/**
+ * 复制文本。
+ *
+ * 手机通过局域网 http:// 打开时页面不是安全上下文（secure context），
+ * navigator.clipboard 直接不可用，所以这里备一条 execCommand 降级路径；
+ * 两条都失败就返回 false，由调用方提示用户长按手动复制。
+ */
+async function copyText(text: string): Promise<boolean> {
+  try {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(text);
+      return true;
+    }
+  } catch {
+    // 落到下面的降级方案
+  }
+  try {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.setAttribute('readonly', '');
+    ta.style.position = 'fixed';
+    ta.style.top = '-1000px';
+    ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.select();
+    ta.setSelectionRange(0, ta.value.length);
+    const ok = document.execCommand('copy');
+    ta.remove();
+    return ok;
+  } catch {
+    return false;
+  }
+}
+
+/** soloup-server 的局域网状态（lan.status / lan.set 的返回体） */
+type LanStatus = {
+  enabled: boolean;
+  port: number;
+  ip: string | null;
+  url: string | null;
+  webReady: boolean;
+};
+
 export function SettingsDrawer({ open, onClose, state, dispatch, toast }: {
   open: boolean;
   onClose: () => void;
@@ -24,11 +67,51 @@ export function SettingsDrawer({ open, onClose, state, dispatch, toast }: {
   const [mcpRunning, setMcpRunning] = useState(false);
   const [mcpToolCount, setMcpToolCount] = useState(0);
 
+  // 局域网服务：开关存在后端 settings 里，这里只做展示与切换
+  const [lan, setLan] = useState<LanStatus | null>(null);
+  const [lanBusy, setLanBusy] = useState(false);
+  // 访问地址的二维码（后端 qrcode 生成的 SVG 片段），地址变了就重新拉
+  const [qrSvg, setQrSvg] = useState<string | null>(null);
+
   const refreshMcp = useCallback(async () => {
     const [healthy, count] = await Promise.all([checkMcpHealth(), getMcpToolCount()]);
     setMcpRunning(healthy);
     setMcpToolCount(count);
   }, []);
+
+  const refreshLan = useCallback(async () => {
+    try {
+      const st = await rpc<LanStatus>('lan.status');
+      setLan(st);
+      // 只有拿到地址才需要二维码；否则清掉，避免留一个过期的码
+      if (st.url) {
+        const q = await rpc<{ url: string | null; svg: string | null }>('lan.qr');
+        setQrSvg(q.svg);
+      } else {
+        setQrSvg(null);
+      }
+    } catch {
+      setLan(null);
+      setQrSvg(null);
+    }
+  }, []);
+
+  const toggleLan = useCallback(
+    async (next: boolean) => {
+      setLanBusy(true);
+      try {
+        await rpc<LanStatus>('lan.set', { enabled: next });
+        // 开关会改变 url 的有效性，重新拉一次状态与二维码
+        await refreshLan();
+        toast(next ? '局域网服务已开启' : '局域网服务已关闭');
+      } catch (e) {
+        toast('操作失败：' + (e as Error).message);
+      } finally {
+        setLanBusy(false);
+      }
+    },
+    [toast, refreshLan],
+  );
 
   // 每次打开时同步当前设置
   useEffect(() => {
@@ -37,6 +120,7 @@ export function SettingsDrawer({ open, onClose, state, dispatch, toast }: {
       setLifeExp(s.lifeExp); setRemind(s.remind);
       setLockHistory(s.lockHistory); setMotion(s.motion);
       refreshMcp();
+      refreshLan();
     }
   }, [open]);
 
@@ -233,9 +317,9 @@ export function SettingsDrawer({ open, onClose, state, dispatch, toast }: {
           <button
             className="btn-ghost"
             style={{ marginLeft: 6, fontSize: 11, padding: '2px 6px' }}
-            onClick={() => {
-              navigator.clipboard.writeText('http://localhost:8788/mcp');
-              toast('已复制连接地址');
+            onClick={async () => {
+              const ok = await copyText('http://localhost:8788/mcp');
+              toast(ok ? '已复制连接地址' : '复制失败，请手动复制');
             }}
           >复制</button>
         </span>
@@ -248,18 +332,67 @@ export function SettingsDrawer({ open, onClose, state, dispatch, toast }: {
         <span className="lbl">AI 客户端配置<span className="sub">添加到 Claude Desktop 等工具的 MCP 设置</span></span>
         <span className="ctl">
           <code style={{ fontSize: 11, background: 'var(--panel)', padding: '2px 6px', borderRadius: 4, cursor: 'pointer' }}
-            onClick={() => {
-              navigator.clipboard.writeText(JSON.stringify({
+            onClick={async () => {
+              const ok = await copyText(JSON.stringify({
                 mcpServers: {
                   soloup: { url: 'http://localhost:8788/mcp' }
                 }
               }, null, 2));
-              toast('已复制 MCP 配置');
+              toast(ok ? '已复制 MCP 配置' : '复制失败，请手动复制');
             }}>
             点击复制配置
           </code>
         </span>
       </div>
+
+      <div className="set-section">局域网服务</div>
+      <div className="set-row">
+        <span className="lbl">手机访问<span className="sub">同一 Wi-Fi 下可直接打开面板</span></span>
+        <span className="ctl">
+          <label className="switch">
+            <input
+              type="checkbox"
+              checked={lan?.enabled ?? false}
+              disabled={lanBusy}
+              onChange={(e) => toggleLan(e.target.checked)}
+            />
+            <span className="knob" />
+          </label>
+        </span>
+      </div>
+      <div className="set-row">
+        <span className="lbl">访问地址</span>
+        <span className="ctl">
+          <code style={{ fontSize: 12, background: 'var(--panel)', color: 'var(--ink)', padding: '4px 8px', borderRadius: 4 }}>
+            {lan?.url ?? (lan ? '未探测到局域网地址' : '后端未连接')}
+          </code>
+          {lan?.url && (
+            <button
+              className="btn-ghost"
+              style={{ marginLeft: 6, fontSize: 11, padding: '2px 6px' }}
+              onClick={async () => {
+                const ok = await copyText(lan.url as string);
+                toast(ok ? '已复制访问地址' : '复制失败，请长按地址手动复制');
+              }}
+            >复制</button>
+          )}
+        </span>
+      </div>
+      {lan?.enabled && qrSvg && (
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, margin: '12px 0 2px' }}>
+          {/* SVG 由后端 qrcode 生成，只含码点路径与颜色，无用户输入 */}
+          <div className="lan-qr" dangerouslySetInnerHTML={{ __html: qrSvg }} />
+          <span style={{ fontSize: 11, color: 'var(--text-3)' }}>手机相机扫一扫，直接打开</span>
+        </div>
+      )}
+      {lan && !lan.webReady && (
+        <p style={{ fontSize: 11, color: 'var(--red-deep)', marginTop: 6, lineHeight: 1.6 }}>
+          还没找到网页产物：请先在项目根目录执行 <code>pnpm --filter @soloup/web build</code> 生成静态页面。
+        </p>
+      )}
+      <p style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 6, lineHeight: 1.6 }}>
+        手机与电脑连同一个 Wi-Fi，用 Safari 打开上面的地址，点「分享 → 添加到主屏幕」，即可像 App 一样打开。
+      </p>
 
       <div className="set-section">数据</div>
       <div className="form-ops" style={{ marginTop: 8 }}>

@@ -61,7 +61,104 @@ fn open_connection(path: &str) -> Result<Connection, StoreError> {
     Ok(conn)
 }
 
-fn migrate(conn: &Connection) -> Result<(), StoreError> {
+/// 迁移前自动备份：保留最近多少份快照（按文件名即时间排序，超出的从最旧开始删）。
+const BACKUP_KEEP: usize = 10;
+/// 逃生舱：`SOLOUP_SKIP_BACKUP=1` 时跳过迁移前备份（备份目录不可写时不至于卡死启动）。
+const SKIP_BACKUP_ENV: &str = "SOLOUP_SKIP_BACKUP";
+
+/// SQLite 字符串字面量转义（单引号写成两个单引号）。
+fn sql_quote(s: &str) -> String {
+    s.replace('\'', "''")
+}
+
+/// 备份目录 = 数据库文件同级的 `backups/`；内存库没有备份可言。
+fn backup_dir_of(db_path: &str) -> Option<std::path::PathBuf> {
+    if db_path == ":memory:" {
+        return None;
+    }
+    let parent = Path::new(db_path).parent().filter(|p| !p.as_os_str().is_empty())?;
+    Some(parent.join("backups"))
+}
+
+/// 库里是否已经有业务表（用于判断「空库不值得备份」）。
+fn has_user_tables(conn: &Connection) -> bool {
+    conn.query_row(
+        "SELECT COUNT(*) FROM sqlite_master WHERE type='table' \
+         AND name IN ('daily_records','skills','attributes','projects')",
+        [],
+        |r| r.get::<_, i64>(0),
+    )
+    .unwrap_or(0)
+        > 0
+}
+
+/// 迁移前的一致性快照。
+///
+/// 这里**不能**用 `std::fs::copy`：库跑在 WAL 模式下，主库文件里可能缺着尚未 checkpoint
+/// 的写入（本机实测主库停在 9/10、`-wal` 里还压着 98KB），裸复制会丢掉最近的数据。
+/// `VACUUM INTO` 交给 SQLite 自己导出，拿到的是完整、一致、且已合并 WAL 的副本。
+fn backup_before_migrate(
+    conn: &Connection,
+    db_path: &str,
+    from_version: i64,
+) -> Result<Option<std::path::PathBuf>, StoreError> {
+    let skip = env::var(SKIP_BACKUP_ENV)
+        .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+        .unwrap_or(false);
+    if skip {
+        return Ok(None);
+    }
+    let Some(dir) = backup_dir_of(db_path) else { return Ok(None) };
+    let hint = format!("（可用 {SKIP_BACKUP_ENV}=1 跳过备份）");
+
+    std::fs::create_dir_all(&dir).map_err(|e| {
+        StoreError::new(
+            StoreErrorCode::BackupFailed,
+            format!("无法创建备份目录 {}：{e} {hint}", dir.display()),
+        )
+    })?;
+
+    let stamp = chrono::Local::now().format("%Y%m%d-%H%M%S");
+    let file = dir.join(format!("soloup-{stamp}-v{from_version}.db"));
+    if file.exists() {
+        // 同一秒内重复触发：复用已有快照，不覆盖。
+        return Ok(Some(file));
+    }
+
+    conn.execute_batch(&format!("VACUUM INTO '{}'", sql_quote(&file.to_string_lossy())))
+        .map_err(|e| {
+            StoreError::new(
+                StoreErrorCode::BackupFailed,
+                format!("迁移前备份失败 {}：{e} {hint}", file.display()),
+            )
+        })?;
+    prune_backups(&dir);
+    Ok(Some(file))
+}
+
+/// 只保留最近 `BACKUP_KEEP` 份快照。只认本程序自己产出的命名（`soloup-<时间戳>-v<n>.db`），
+/// 目录里其他文件一律不碰。
+fn prune_backups(dir: &Path) {
+    let Ok(entries) = std::fs::read_dir(dir) else { return };
+    let mut ours: Vec<std::path::PathBuf> = entries
+        .flatten()
+        .map(|e| e.path())
+        .filter(|p| {
+            p.file_name()
+                .and_then(|n| n.to_str())
+                .is_some_and(|n| n.starts_with("soloup-") && n.ends_with(".db"))
+        })
+        .collect();
+    if ours.len() <= BACKUP_KEEP {
+        return;
+    }
+    ours.sort();
+    for old in &ours[..ours.len() - BACKUP_KEEP] {
+        let _ = std::fs::remove_file(old);
+    }
+}
+
+fn migrate(conn: &Connection, db_path: &str) -> Result<(), StoreError> {
     let current: i64 = conn.query_row("PRAGMA user_version", [], |r| r.get(0))?;
     let latest = latest_schema_version();
     if current > latest {
@@ -69,6 +166,11 @@ fn migrate(conn: &Connection) -> Result<(), StoreError> {
             StoreErrorCode::NewerSchema,
             format!("数据库 schema 版本 {current} 高于当前程序支持的 {latest}"),
         ));
+    }
+    if current < latest && (current > 0 || has_user_tables(conn)) {
+        if let Some(snapshot) = backup_before_migrate(conn, db_path, current)? {
+            println!("[soloup] 迁移前已备份 v{current} → {}", snapshot.display());
+        }
     }
     for m in migrations::MIGRATIONS {
         if m.version > current {
@@ -146,7 +248,7 @@ impl Default for OpenStoreOptions {
 pub fn open_store(options: OpenStoreOptions) -> Result<Store, StoreError> {
     let path = resolve_path(options.path.as_deref());
     let conn = open_connection(&path)?;
-    migrate(&conn)?;
+    migrate(&conn, &path)?;
     Ok(Store { conn })
 }
 

@@ -1,19 +1,27 @@
-/* ================= 种子数据（首次加载/重置时使用） ================= */
-import type { AchievementDef, AppState, Attr, DayRecord, Project, Settings, SkillGroup } from './types';
-import { epForLevel, daysAgoKey } from './model';
+/* ================= 种子数据（后端不可用时的兜底占位） =================
+   这里的字段口径与后端派生结果保持一致（属性 value 0–100、技能 level 0–100 连续值），
+   但不需要复刻成长曲线——后端可用时整份数据会被 bootstrap 直接覆盖。 */
+import type { AchievementDef, AppState, Attr, DayRecord, Project, Settings, SkillGroup, SkillLeaf } from './types';
+import { daysAgoKey } from './model';
 
-/** 由目标等级反推 EP，再追加少量余量让进度条有真实观感（extra 已核验不越级） */
-function epFor(lv: number, extra: number): number {
-  return Math.round(epForLevel(lv)) + extra;
+/** 由面板等级 + 级内进度构造属性（面板折半展示：0–50 级）。 */
+function mkAttr(id: string, name: string, en: string, color: string, tint: string, lv: number, frac: number): Attr {
+  return { id, name, en, color, tint, value: (lv + frac) * 2, lv, frac };
+}
+
+/** 由后端口径的连续等级构造叶子技能（面板等级 = 向下取整）。 */
+function mkLeaf(id: string, name: string, level: number, checkins: number, attrs: [string, number][]): SkillLeaf {
+  const lv = Math.floor(level);
+  return { id, name, level, lv, frac: level - lv, checkins, attrs };
 }
 
 export const SEED_ATTRS: Attr[] = [
-  { id: 'vit', name: '体质', en: 'VIT', color: '#C6352B', tint: '#FDE8E6', ep: epFor(24, 37) },
-  { id: 'int', name: '智力', en: 'INT', color: '#2456C4', tint: '#E8EFFF', ep: epFor(35, 91) },
-  { id: 'crea', name: '创造', en: 'CREA', color: '#6D28D9', tint: '#F1E9FF', ep: epFor(29, 55) },
-  { id: 'will', name: '意志', en: 'WILL', color: '#B45309', tint: '#FFF1D6', ep: epFor(18, 23) },
-  { id: 'cha', name: '魅力', en: 'CHA', color: '#BE185D', tint: '#FDE9F3', ep: epFor(12, 3) },
-  { id: 'sen', name: '感知', en: 'SEN', color: '#047857', tint: '#DFF7EE', ep: epFor(21, 11) },
+  mkAttr('vit', '体质', 'VIT', '#C6352B', '#FDE8E6', 24, 0.49),
+  mkAttr('int', '智力', 'INT', '#2456C4', '#E8EFFF', 35, 0.91),
+  mkAttr('crea', '创造', 'CREA', '#6D28D9', '#F1E9FF', 29, 0.55),
+  mkAttr('will', '意志', 'WILL', '#B45309', '#FFF1D6', 18, 0.23),
+  mkAttr('cha', '魅力', 'CHA', '#BE185D', '#FDE9F3', 12, 0.03),
+  mkAttr('sen', '感知', 'SEN', '#047857', '#DFF7EE', 21, 0.11),
 ];
 
 /** 属性色板：[深字色, 淡底色] 配对（对比度已核验） */
@@ -26,24 +34,24 @@ export const ATTR_PALETTE: [string, string][] = [
 export const SEED_SKILLS: SkillGroup[] = [
   { id: 'art', name: '艺术', ch: [
     { name: '绘画', ch: [
-      { id: 'sketch', name: '素描', uses: 120, attrs: [['crea', .5], ['sen', .5]] },
-      { id: 'oil', name: '油画', uses: 12, attrs: [['crea', .6], ['sen', .4]] },
-      { id: 'digi', name: '数字绘画', uses: 45, attrs: [['crea', .7], ['int', .3]] },
+      mkLeaf('sketch', '素描', 41.3, 62, [['crea', .5], ['sen', .5]]),
+      mkLeaf('oil', '油画', 18.7, 11, [['crea', .6], ['sen', .4]]),
+      mkLeaf('digi', '数字绘画', 33.5, 38, [['crea', .7], ['int', .3]]),
     ] },
     { name: '音乐', ch: [
-      { id: 'guitar', name: '吉他', uses: 60, attrs: [['crea', .5], ['cha', .5]] },
+      mkLeaf('guitar', '吉他', 27.9, 29, [['crea', .5], ['cha', .5]]),
     ] },
   ] },
   { id: 'tech', name: '技术', ch: [
     { name: '编程', ch: [
-      { id: 'fe', name: '前端开发', uses: 200, attrs: [['int', .6], ['crea', .4]] },
-      { id: 'rust', name: 'Rust', uses: 30, attrs: [['int', .8], ['will', .2]] },
+      mkLeaf('fe', '前端开发', 58.4, 71, [['int', .6], ['crea', .4]]),
+      mkLeaf('rust', 'Rust', 22.1, 24, [['int', .8], ['will', .2]]),
     ] },
   ] },
   { id: 'body', name: '身体', ch: [
     { name: '运动', ch: [
-      { id: 'run', name: '跑步', uses: 90, attrs: [['vit', .7], ['will', .3]] },
-      { id: 'gym', name: '力量训练', uses: 20, attrs: [['vit', .8], ['will', .2]] },
+      mkLeaf('run', '跑步', 44.6, 45, [['vit', .7], ['will', .3]]),
+      mkLeaf('gym', '力量训练', 15.2, 15, [['vit', .8], ['will', .2]]),
     ] },
   ] },
 ];
@@ -76,17 +84,19 @@ export const SEED_PROJECTS: Project[] = [
   },
 ];
 
-/** 成就定义：check 基于统计值判定，prog 用于未解锁卡背进度文案 */
-export const ACHIEVEMENTS: AchievementDef[] = [
-  { id: 'first', name: '初次觉醒', rarity: '普通', rc: '#6B7280', icon: 'star', desc: '完成第一次每日记录', hidden: true, revealAt: 0.5, check: (s) => s.totalDays >= 1, prog: (s) => `已记录 ${s.totalDays} / 1 天` },
-  { id: 'twin', name: '双线并进', rarity: '普通', rc: '#6B7280', icon: 'twin', desc: '单日点亮 2 项以上属性', hidden: true, requires: ['first'], revealAt: 0.5, check: (s) => s.maxLitOneDay >= 2, prog: (s) => `单日最高点亮 ${Math.min(s.maxLitOneDay, 2)} / 2 项` },
-  { id: 'week7', name: '七日之约', rarity: '稀有', rc: '#2F6FED', icon: 'moon', desc: '连续记录 7 天不间断', check: (s) => s.streak >= 7, prog: (s) => `当前连续 ${s.streak} / 7 天` },
-  { id: 'dawn', name: '破晓之光', rarity: '稀有', rc: '#2F6FED', icon: 'sun', desc: '任意属性达到 LV 10', check: (s) => s.maxAttrLv >= 10, prog: (s) => `当前最高属性 LV ${s.maxAttrLv} / 10` },
-  { id: 'd100', name: '百日筑基', rarity: '史诗', rc: '#7C3AED', icon: 'mountain', desc: '累计记录 100 天', check: (s) => s.totalDays >= 100, prog: (s) => `已记录 ${s.totalDays} / 100 天` },
-  { id: 'allsix', name: '六艺俱全', rarity: '史诗', rc: '#7C3AED', icon: 'gem', desc: '单日点亮全部六项属性', hidden: true, requires: ['twin'], revealAt: 0.4, check: (s) => s.maxLitOneDay >= s.totalAttrs, prog: (s) => `历史最高 ${Math.min(s.maxLitOneDay, s.totalAttrs)} / ${s.totalAttrs}` },
-  { id: 'done1', name: '完稿', rarity: '传说', rc: '#FFB020', icon: 'scroll', desc: '完成第一个项目', legendary: true, requires: ['week7', 'dawn'], check: (s) => s.projectsDone >= 1, prog: (s) => `已完成 ${s.projectsDone} / 1 个项目` },
-  { id: 'grand', name: '宗师之路', rarity: '传说', rc: '#FFB020', icon: 'crown', desc: '任意技能达到宗师Ⅴ（LV 20）', legendary: true, requires: ['dawn'], check: (s) => s.maxSkillLv >= 20, prog: (s) => `当前最高 ${s.maxSkillLv} / 20` },
-  { id: 'tenk', name: '万时之功', rarity: '传说', rc: '#FFB020', icon: 'scroll', desc: '某个技能累计打卡 10,000 天', legendary: true, requires: ['d100'], check: (s) => s.maxSkillCheckins >= 10000, prog: (s) => `当前最高 ${s.maxSkillCheckins.toLocaleString()} / 10,000 天` },
+/** 成就兜底数据（后端不可用时展示）。
+ *  字段口径与后端 achievements 表一致：条件为 stat 阈值 DSL，判定与展示都交给同一套通用逻辑，
+ *  这里不再携带 check / prog 函数——加了新成就也只需照抄后端那一行。 */
+export const SEED_ACHIEVEMENTS: AchievementDef[] = [
+  { id: 'first', name: '初次觉醒', desc: '完成第一次每日记录', rarity: '普通', points: 10, type: 'milestone', condition: { stat: 'totalDays', operator: '>=', value: 1 }, hidden: true, requires: [], revealAt: 0.5 },
+  { id: 'twin', name: '双线并进', desc: '单日点亮 2 项以上属性', rarity: '普通', points: 20, type: 'attribute', condition: { stat: 'maxLitOneDay', operator: '>=', value: 2 }, hidden: true, requires: ['first'], revealAt: 0.5 },
+  { id: 'week7', name: '七日之约', desc: '连续记录 7 天不间断', rarity: '稀有', points: 30, type: 'milestone', condition: { stat: 'streak', operator: '>=', value: 7 }, hidden: false, requires: [], revealAt: null },
+  { id: 'dawn', name: '破晓之光', desc: '任一技能达到 4 级', rarity: '稀有', points: 40, type: 'skill', condition: { stat: 'maxSkillLv', operator: '>=', value: 4 }, hidden: false, requires: [], revealAt: null },
+  { id: 'd100', name: '百日筑基', desc: '累计记录 100 天', rarity: '史诗', points: 100, type: 'milestone', condition: { stat: 'totalDays', operator: '>=', value: 100 }, hidden: false, requires: [], revealAt: null },
+  { id: 'allsix', name: '六艺俱全', desc: '单日点亮全部属性', rarity: '史诗', points: 120, type: 'attribute', condition: { stat: 'maxLitOneDay', operator: '>=', ref: 'totalAttrs' }, hidden: true, requires: ['twin'], revealAt: 0.4 },
+  { id: 'done1', name: '完稿', desc: '完成第一个项目', rarity: '传说', points: 150, type: 'project', condition: { stat: 'projectsCompleted', operator: '>=', value: 1 }, hidden: false, requires: ['week7', 'dawn'], revealAt: null },
+  { id: 'grand', name: '宗师之路', desc: '任一技能达到 20 级', rarity: '传说', points: 200, type: 'skill', condition: { stat: 'maxSkillLv', operator: '>=', value: 20 }, hidden: false, requires: ['dawn'], revealAt: null },
+  { id: 'tenk', name: '万时之功', desc: '某个技能累计打卡 10,000 天', rarity: '传说', points: 300, type: 'skill', condition: { stat: 'maxSkillCheckins', operator: '>=', value: 10000 }, hidden: false, requires: ['d100'], revealAt: null },
 ];
 
 /** 种子已达成的成就（日期对齐原型演示） */
@@ -128,6 +138,7 @@ export function seedState(): AppState {
     skills: JSON.parse(JSON.stringify(SEED_SKILLS)),
     records: seedRecords(),
     projects: JSON.parse(JSON.stringify(SEED_PROJECTS)),
+    achievements: JSON.parse(JSON.stringify(SEED_ACHIEVEMENTS)),
     unlocked: { ...SEED_UNLOCKED },
     settings: { ...SEED_SETTINGS },
   };
