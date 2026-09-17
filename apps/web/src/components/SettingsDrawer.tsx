@@ -4,6 +4,7 @@ import React, { useEffect, useState, useCallback } from 'react';
 import type { AppState } from '@/lib/types';
 import { Drawer } from './Drawer';
 import { checkMcpHealth, getMcpToolCount, rpc } from '@/lib/api';
+import { getAutostart, isDesktop, setAutostart } from '@/lib/autostart';
 
 /**
  * 复制文本。
@@ -83,6 +84,11 @@ export function SettingsDrawer({
   // 访问地址的二维码（后端 qrcode 生成的 SVG 片段），地址变了就重新拉
   const [qrSvg, setQrSvg] = useState<string | null>(null);
 
+  // 开机自启动：状态直接读系统（Windows 注册表的 Run 项），不落后端数据库。
+  // null = 当前环境没有这个能力（浏览器 / 手机局域网页面）。
+  const [autoStart, setAutoStart] = useState<boolean | null>(null);
+  const [autoStartBusy, setAutoStartBusy] = useState(false);
+
   const refreshMcp = useCallback(async () => {
     const [healthy, count] = await Promise.all([checkMcpHealth(), getMcpToolCount()]);
     setMcpRunning(healthy);
@@ -123,6 +129,27 @@ export function SettingsDrawer({
     [toast, refreshLan],
   );
 
+  const refreshAutoStart = useCallback(async () => {
+    setAutoStart(await getAutostart());
+  }, []);
+
+  const toggleAutoStart = useCallback(
+    async (next: boolean) => {
+      setAutoStartBusy(true);
+      const ok = await setAutostart(next);
+      if (ok) {
+        setAutoStart(next);
+        toast(next ? '已开启开机自启动' : '已关闭开机自启动');
+      } else {
+        // 写失败就回读系统的真实状态，别让开关停在用户点的哪一侧
+        setAutoStart(await getAutostart());
+        toast('设置失败，可能被系统策略拦住了');
+      }
+      setAutoStartBusy(false);
+    },
+    [toast],
+  );
+
   // 每次打开时同步当前设置
   useEffect(() => {
     if (open) {
@@ -135,6 +162,7 @@ export function SettingsDrawer({
       setMotion(s.motion);
       refreshMcp();
       refreshLan();
+      refreshAutoStart();
     }
   }, [open]);
 
@@ -265,6 +293,18 @@ export function SettingsDrawer({
     }
   };
 
+  // 提示文案分三种情况说。别把「读不到」误报成「不支持」—— 在桌面版里
+  // 显示「仅桌面版可设置」会是一句让人摸不着头脑的假话。
+  let autoStartHint: string;
+  if (!isDesktop()) {
+    autoStartHint = '仅桌面版可设置：网页（含手机通过局域网打开的页面）没有修改系统启动项的权限。';
+  } else if (autoStart === null) {
+    autoStartHint = '没能读到系统的启动项设置，关掉重开这个面板再试一次。';
+  } else {
+    autoStartHint =
+      '开关即时生效，不需要点「保存设置」。开启后开机只在托盘后台运行、不弹窗；想看面板时点右下角托盘图标即可。';
+  }
+
   return (
     <Drawer open={open} title="设置" onClose={onClose} label="设置">
       <div className="set-section">角色</div>
@@ -367,6 +407,27 @@ export function SettingsDrawer({
           </label>
         </span>
       </div>
+
+      <div className="set-section">启动</div>
+      <div className="set-row">
+        <span className="lbl">
+          开机自启动<span className="sub">登录 Windows 后自动在托盘后台运行</span>
+        </span>
+        <span className="ctl">
+          <label className="switch">
+            <input
+              type="checkbox"
+              checked={autoStart ?? false}
+              disabled={autoStart === null || autoStartBusy}
+              onChange={(e) => toggleAutoStart(e.target.checked)}
+            />
+            <span className="knob" />
+          </label>
+        </span>
+      </div>
+      <p style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 6, lineHeight: 1.6 }}>
+        {autoStartHint}
+      </p>
 
       <div className="set-section">外观与动效</div>
       <div className="set-row">

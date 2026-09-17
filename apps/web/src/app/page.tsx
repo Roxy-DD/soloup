@@ -1,9 +1,10 @@
 'use client';
 /* ================= 人生 RPG 面板 · 主页面：导航 + 五页 Tab + 抽屉编排 + 成就引擎 ================= */
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { StoreProvider, useStore } from '@/lib/store';
 import { ToastProvider, useToast } from '@/components/Toast';
 import { startReminder } from '@/lib/reminder';
+import { todayKey } from '@/lib/model';
 import { NavIcon } from '@/components/icons';
 import { DashboardTab } from '@/components/DashboardTab';
 import { SkillsTab } from '@/components/SkillsTab';
@@ -41,14 +42,22 @@ function Shell() {
     return () => document.removeEventListener('contextmenu', handler);
   }, []);
 
+  // 提醒回调经 ref 读取最新状态：定时器只启动一次，改提醒时间不再重启它
+  const latest = useRef(state);
+  useEffect(() => {
+    latest.current = state;
+  }, [state]);
+
   // 每日打卡提醒
   useEffect(() => {
     const cleanup = startReminder({
-      getRemindTime: () => state.settings.remind,
+      getRemindTime: () => latest.current.settings.remind,
+      hasCheckedInToday: () =>
+        latest.current.records.some((r) => r.date === todayKey() && r.skillIds.length > 0),
       toast,
     });
     return cleanup;
-  }, [state.settings.remind]);
+  }, [toast]);
 
   const go = (t: TabId) => {
     setTab(t);

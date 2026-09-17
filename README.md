@@ -16,6 +16,7 @@
 - **MCP 服务** — 本地 MCP server，AI 可查询和管理面板数据（41 个工具）
 - **局域网服务** — 一键开放同一 Wi-Fi 下的访问，配二维码；手机上「添加到主屏幕」即成为独立 App（PWA）
 - **系统托盘** — 关闭窗口时最小化到托盘，后台持续运行
+- **开机自启动** — 可选登录系统后自动驻留托盘（桌面版；网页端无此能力）
 - **自动备份** — 数据库 schema 升级前自动落一份一致性快照，升级失败可回滚
 
 ## 技术栈
@@ -161,10 +162,11 @@ pnpm build:dist
 sidecar、打包 NSIS 安装器，并把产物发布到 [Releases](https://github.com/Roxy-DD/soloup/releases)。
 
 ```bash
-# 1) 改版本号（package.json / src-tauri/tauri.conf.json / src-tauri/Cargo.toml）
+# 1) 改版本号（四处：package.json / src-tauri/tauri.conf.json /
+#    src-tauri/Cargo.toml / backend/Cargo.toml 的 workspace.package.version）
 # 2) 更新 CHANGELOG.md
 # 3) 提交并推 tag
-git tag v1.1.0
+git tag v1.2.0
 git push origin main --tags
 ```
 

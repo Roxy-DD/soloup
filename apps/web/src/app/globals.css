@@ -1831,6 +1831,14 @@ input[type='range'] {
 .switch input:checked + .knob::before {
   transform: translateX(20px);
 }
+/* 禁用态。开机自启动在网页/手机端是长期不可用（不是操作中的短暂禁用），
+   必须一眼看出来点不动。 */
+.switch input:disabled {
+  cursor: not-allowed;
+}
+.switch input:disabled + .knob {
+  opacity: 0.45;
+}
 .attr-row {
   display: flex;
   align-items: center;

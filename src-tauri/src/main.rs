@@ -8,6 +8,11 @@ use tauri::{
     menu::{Menu, MenuItem},
     tray::{TrayIconBuilder, MouseButton, MouseButtonState, TrayIconEvent},
 };
+use tauri_plugin_autostart::MacosLauncher;
+
+/// 由「开机自启动」拉起时附带的参数：只驻留托盘，不弹主窗口。
+/// 与下面 `tauri_plugin_autostart::init` 里注册的参数必须一致。
+const SILENT_FLAG: &str = "--silent";
 
 struct Sidecars {
     server: Child,
@@ -41,6 +46,12 @@ fn main() {
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
+        // 开机自启动：Windows 下写 HKCU\Software\Microsoft\Windows\CurrentVersion\Run。
+        // 注册的命令行带上 SILENT_FLAG，于是自启动拉起时不会弹窗（见 setup 里的处理）。
+        .plugin(tauri_plugin_autostart::init(
+            MacosLauncher::LaunchAgent,
+            Some(vec![SILENT_FLAG]),
+        ))
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
             if let Some(w) = app.get_webview_window("main") {
                 let _ = w.show();
@@ -48,6 +59,19 @@ fn main() {
             }
         }))
         .setup(|app| {
+            // 开机自启拉起的实例只在托盘待命。放在 setup 最前面，尽量赶在窗口显露前隐藏。
+            if std::env::args().any(|a| a == SILENT_FLAG) {
+                match app.get_webview_window("main") {
+                    Some(w) => {
+                        let _ = w.hide();
+                        eprintln!("[soloup] 开机自启：主窗口保持隐藏，仅托盘待命");
+                    }
+                    // 万一配置里的窗口晚于 setup 才创建，这里会取不到；此时退化成
+                    // 「照常显示窗口」，只是静默失效，不会让应用起不来。
+                    None => eprintln!("[soloup] 未取到主窗口，--silent 未生效（不影响启动）"),
+                }
+            }
+
             let db_path = app
                 .path()
                 .app_data_dir()
