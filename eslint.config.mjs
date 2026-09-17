@@ -9,6 +9,9 @@ export default tseslint.config(
     '**/.next-*/**',
     // Next.js 静态导出产物（apps/web/out），是生成物，不该被 lint
     '**/out/**',
+    // 打包时由 scripts/copy-sidecars.mjs 拷进 src-tauri 的前端产物，同样是生成物。
+    // 不忽略的话，只要跑过一次 build:dist，`pnpm lint` 就会被压缩 js 淹没而失败。
+    '**/resources/web/**',
     '**/coverage/**',
     '**/.git/**',
     '**/*.d.ts',
