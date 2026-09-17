@@ -6,6 +6,42 @@
 
 ---
 
+## ⚠️ 实现现状声明（2026-09-17 补注）
+
+**先读这一节，再读正文。**
+
+本文是一份**带日期的决策日志**，按时间顺序记录了项目从立项到落地的全部技术决策。
+它记录的是"当时为什么这么定"，因此**正文的某些章节已经与当前代码不一致**。
+
+最大的偏离是**后端语言**：早期定稿选的是 TypeScript + `better-sqlite3`，
+执行期整体迁移到了 **Rust**。凡是正文中出现下列内容的，均属**历史决策记录**，
+不代表当前实现：
+
+| 正文里的历史说法 | 当前实现 |
+|---|---|
+| TypeScript（strict）+ Node.js 后端 | Rust workspace，5 个 crate |
+| `better-sqlite3` + 手写 SQL Repository | `rusqlite`（`soloup-store` crate） |
+| `@modelcontextprotocol/sdk`（TS） | 自实现 MCP server（`soloup-mcp` crate） |
+| Next.js Route Handler 直连 SQLite | Next.js 纯静态导出，数据走 Rust 的 JSON-RPC |
+| `output: 'standalone'` | `output: 'export'`（静态导出） |
+| `packages/core / store / solver` | `backend/crates/soloup-core / -store / -solver` |
+
+**仍然有效**的部分（本文的核心价值所在）：
+
+- §1~§3 的**数学模型**：双轨等级曲线、结晶/遗忘参数表、属性派生、逐日离散迭代 —— 全部按原样落地
+- §4 的分层与**写入通道约定**：所有写操作走服务层、不可绕过不变量
+- §5 的成就 DSL 与判定语义
+- §9 的 **MCP 工具清单**与参数三层设计（`soloup_param_*` 工具组）
+- §7 的 **UI/UX 规格**：视觉 token、信息架构、SVG 图表原语
+- 附录的黄金测试用例与决策记录
+
+**权威性顺序**：代码 > 本文 > 任何转述。凡本文与代码冲突，
+以 `backend/crates/` 与 `apps/web/src/` 的实际实现为准；
+结构关系可参考仓库根目录 `README.md`，构建流程见 `docs/BUILD.md`。
+
+---
+
+
 ## 0. 变更说明（相对初版需求稿）
 
 | # | 变更 | 原因 |

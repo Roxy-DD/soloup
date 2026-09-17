@@ -7,6 +7,8 @@ export default tseslint.config(
     '**/dist/**',
     '**/.next/**',
     '**/.next-*/**',
+    // Next.js 静态导出产物（apps/web/out），是生成物，不该被 lint
+    '**/out/**',
     '**/coverage/**',
     '**/.git/**',
     '**/*.d.ts',

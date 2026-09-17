@@ -35,8 +35,25 @@ jobs:
       - name: Build backend sidecars
         run: cd backend && cargo build --release -p soloup-server -p soloup-mcp
 
+      # 必须先产出前端静态文件：下一步的 copy-sidecars.mjs 要把 apps/web/out
+      # 复制到 src-tauri/resources/web，若此时 out 还不存在，它只会打一条
+      # warning 然后跳过，安装包里就会少掉 web 目录 —— 桌面版于是无法对外
+      # 提供局域网页面（手机扫码打不开）。tauri build 的 beforeBuildCommand
+      # 虽然也会构建前端，但那发生在复制之后，来不及。
+      - name: Build web (static export)
+        run: pnpm --filter @soloup/web build
+
       - name: Copy sidecars to resources
         run: node scripts/copy-sidecars.mjs
+
+      # 硬校验：资源缺失必须让构建失败，而不是产出一个残缺的安装包。
+      - name: Guard resources/web is bundled
+        run: |
+          if (-not (Test-Path "src-tauri/resources/web/index.html")) {
+            Write-Error "src-tauri/resources/web 缺失，安装包将不含局域网页面"
+            exit 1
+          }
+          Write-Host "resources/web 已就绪（含 index.html）"
 
       - name: Build Tauri app
         uses: tauri-apps/tauri-action@v0
@@ -45,6 +62,9 @@ jobs:
         with:
           tagName: ${{ github.ref_name }}
           releaseName: 'Soloup ${{ github.ref_name }}'
-          releaseBody: 'See the assets to download the installer.'
+          releaseBody: |
+            下载下方 Assets 里的 `Soloup_<version>_x64-setup.exe`，双击安装即可（Windows x64）。
+
+            完整更新内容见仓库 [CHANGELOG.md](../blob/main/CHANGELOG.md)。
           releaseDraft: false
           prerelease: false

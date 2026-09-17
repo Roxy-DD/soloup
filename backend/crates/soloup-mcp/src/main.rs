@@ -205,7 +205,8 @@ fn handle_initialize(request: &JsonRpcRequest, id: Option<Value>) -> JsonRpcResp
             },
             "serverInfo": {
                 "name": "soloup-mcp",
-                "version": "0.1.0"
+                // 版本号取自 crate 版本，避免发版时漏改
+                "version": env!("CARGO_PKG_VERSION")
             }
         })),
         error: None,
