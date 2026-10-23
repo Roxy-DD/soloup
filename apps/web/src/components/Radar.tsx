@@ -1,8 +1,24 @@
 'use client';
-/* ================= 雷达图：3–8 轴动态 SVG；>8 自动降级为 LV 排行条 ================= */
+/* ================= 雷达图：3–8 轴动态 SVG；>8 自动降级为 LV 排行条 =================
+   这张图只回答「六项之间谁强谁弱」，不承担绝对数值的职责：
+   半径一律按当前最高项归一（最高项落在 94% 处），量程写在图底部，
+   精确等级看右侧属性卡。早期成长时 value 只有零点几，若按满级刻度画
+   会整片塌在圆心，看不出任何分布。
+*/
 import React from 'react';
 import type { Attr } from '@/lib/types';
 import { ATTR_LV_MAX } from '@/lib/model';
+
+/** 量程下限：属性还极小时按这个量程画，避免一个点就顶满整张图。 */
+const MIN_SCALE = 0.05;
+/** 顶点留边：最高属性落在 94% 半径处，不贴外圈。 */
+const EDGE = 0.94;
+
+/**
+ * 面板上的连续等级（0–50）。后端 value 值域 0–100、面板折半，
+ * lv 是它的整数部分、frac 是级内小数 —— 两者相加才是没被取整的真实进度。
+ */
+const continuousLevel = (a: Attr): number => Math.max(0, Math.min(ATTR_LV_MAX, a.lv + a.frac));
 
 export function RadarViewTitle(n: number): string {
   return n > 8 ? '属性排行' : n === 6 ? '六维属性' : `${n} 维属性`;
@@ -10,17 +26,21 @@ export function RadarViewTitle(n: number): string {
 
 export function Radar({ attrs }: { attrs: Attr[] }) {
   const N = attrs.length;
-  const MAX = ATTR_LV_MAX;
+
+  // 量程跟随当前最高项：任何阶段都能看出形状差异，量程值标在底部。
+  const levels = attrs.map(continuousLevel);
+  const scale = Math.max(Math.max(...levels, 0), MIN_SCALE);
+  const ratio = levels.map((v) => Math.min(1, v / scale));
 
   // 超过 8 轴 → 排行条视图
   if (N > 8) {
-    const sorted = [...attrs].sort((a, b) => b.lv - a.lv);
+    const rows = attrs.map((a, i) => ({ a, r: ratio[i] })).sort((x, y) => y.r - x.r);
     return (
       <div>
         <div style={{ fontSize: 12, color: 'var(--text-3)', marginBottom: 10 }}>
-          属性已超过 8 项 · 雷达图自动切换为排行视图
+          属性已超过 8 项 · 雷达图自动切换为排行视图（条长为相对占比，右侧为面板等级）
         </div>
-        {sorted.map((a) => (
+        {rows.map(({ a, r }) => (
           <div
             key={a.id}
             style={{ display: 'flex', alignItems: 'center', gap: 10, margin: '8px 0' }}
@@ -42,7 +62,7 @@ export function Radar({ attrs }: { attrs: Attr[] }) {
                 style={{
                   display: 'block',
                   height: '100%',
-                  width: `${Math.min(100, Math.round((a.lv / MAX) * 100))}%`,
+                  width: `${Math.round(r * 100)}%`,
                   background: a.color,
                 }}
               />
@@ -64,7 +84,7 @@ export function Radar({ attrs }: { attrs: Attr[] }) {
     );
   }
 
-  // 画布加宽（360×290）+ 圆心右移，保证左侧右对齐标签不被裁切
+  // 画布加宽（360×300）+ 圆心右移，保证左侧右对齐标签不被裁切
   const cx = 180,
     cy = 142,
     R = 92;
@@ -79,17 +99,18 @@ export function Radar({ attrs }: { attrs: Attr[] }) {
         .join(','),
     ).join(' ');
 
-  const rings = [18.4, 36.8, 55.2, 73.6, 92];
+  const rOf = (i: number) => R * EDGE * ratio[i];
+  const rings = [0.2, 0.4, 0.6, 0.8, 1].map((p) => R * p);
   const dp = attrs
-    .map((a, i) =>
-      pt(i, (R * Math.min(MAX, a.lv)) / MAX)
+    .map((_, i) =>
+      pt(i, rOf(i))
         .map((v) => v.toFixed(1))
         .join(','),
     )
     .join(' ');
 
   return (
-    <svg viewBox="0 0 360 290" width="100%" role="img" aria-label="属性雷达图">
+    <svg viewBox="0 0 360 300" width="100%" role="img" aria-label="属性分布雷达图">
       {rings.map((r) => (
         <polygon key={r} points={poly(r)} fill="none" stroke="#E5DCC2" strokeWidth="1.2" />
       ))}
@@ -106,8 +127,7 @@ export function Radar({ attrs }: { attrs: Attr[] }) {
         strokeLinejoin="round"
       />
       {attrs.map((a, i) => {
-        const r = (R * Math.min(MAX, a.lv)) / MAX;
-        const [x, y] = pt(i, r);
+        const [x, y] = pt(i, rOf(i));
         return (
           <circle
             key={a.id}
@@ -136,11 +156,15 @@ export function Radar({ attrs }: { attrs: Attr[] }) {
             fontSize="12"
             fontWeight="700"
             fontFamily="Noto Sans SC"
+            fill={a.color}
           >
-            <tspan fill={a.color}>{a.name}</tspan> <tspan fill="#7A7260">LV{a.lv}</tspan>
+            {a.name}
           </text>
         );
       })}
+      <text x="12" y="288" fontSize="11" fontFamily="Noto Sans SC" fill="#7A7260">
+        按当前最高项缩放 · 量程 0–{scale.toFixed(2)} 级
+      </text>
     </svg>
   );
 }
