@@ -257,8 +257,9 @@ export function SettingsDrawer({
         return;
       }
       if (content) doImport(content);
-    } catch {
-      toast('导入失败，请检查文件格式');
+    } catch (error) {
+      console.error('[import] error:', error);
+      toast(error instanceof Error ? `导入失败：${error.message}` : '导入失败，请检查文件格式');
     }
   };
 
@@ -288,8 +289,9 @@ export function SettingsDrawer({
       );
       onClose();
       window.location.reload();
-    } catch {
-      toast('导入失败，请检查文件格式');
+    } catch (error) {
+      console.error('[import] error:', error);
+      toast(error instanceof Error ? `导入失败：${error.message}` : '导入失败，请检查文件格式');
     }
   };
 
@@ -617,7 +619,9 @@ export function SettingsDrawer({
         </button>
       </div>
       <p style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 10 }}>
-        数据存储在本地 SQLite 数据库（~/.soloup/soloup.db）；导出 JSON 可用于备份或迁移。
+        数据保存在运行 Soloup 的电脑本地。桌面安装版使用
+        %APPDATA%\com.soloup.app\soloup.db；直接运行后端时使用 ~/.soloup/soloup.db。导出 JSON
+        可用于备份或迁移。
       </p>
       <div className="form-ops">
         <button className="btn-primary" onClick={save}>

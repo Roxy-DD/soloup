@@ -1093,22 +1093,78 @@ pub fn dispatch(solver: &mut Solver, op: &str, args: &Value) -> Result<Value, Rp
                     "DELETE FROM skill_attributes;
                      DELETE FROM daily_record_skills;
                      DELETE FROM daily_records;
-                     DELETE FROM skills;
                      DELETE FROM attributes;
                      DELETE FROM projects;
                      DELETE FROM achievements;
                      DELETE FROM settings;",
                 )?;
 
+                // skills.parent_id is a self-reference with ON DELETE RESTRICT. Delete
+                // leaves first so importing over an existing tree does not violate the FK.
+                loop {
+                    let deleted = c.execute(
+                        "DELETE FROM skills
+                         WHERE NOT EXISTS (
+                           SELECT 1 FROM skills child WHERE child.parent_id = skills.id
+                         )",
+                        [],
+                    )?;
+                    if deleted == 0 {
+                        break;
+                    }
+                }
+                let remaining: i64 = c.query_row("SELECT COUNT(*) FROM skills", [], |row| row.get(0))?;
+                if remaining > 0 {
+                    return Err(soloup_store::StoreError::new(
+                        soloup_store::StoreErrorCode::Cycle,
+                        "现有技能树存在循环，无法安全替换",
+                    ));
+                }
+
                 for a in &attrs {
                     let row = serde_json::from_value::<soloup_core::schema::Attribute>(a.clone())
                         .map_err(|e| soloup_store::StoreError::new(soloup_store::StoreErrorCode::Validation, e.to_string()))?;
                     soloup_store::attributes::AttributeRepo { db: c }.create(&row)?;
                 }
-                for s in &skills {
-                    let row = serde_json::from_value::<soloup_core::schema::Skill>(s.clone())
-                        .map_err(|e| soloup_store::StoreError::new(soloup_store::StoreErrorCode::Validation, e.to_string()))?;
-                    soloup_store::skills::SkillRepo { db: c }.create(&row)?;
+                let mut pending = skills
+                    .iter()
+                    .map(|s| {
+                        serde_json::from_value::<soloup_core::schema::Skill>(s.clone()).map_err(|e| {
+                            soloup_store::StoreError::new(
+                                soloup_store::StoreErrorCode::Validation,
+                                e.to_string(),
+                            )
+                        })
+                    })
+                    .collect::<Result<Vec<_>, _>>()?;
+                let skill_ids: HashSet<String> = pending.iter().map(|skill| skill.id.clone()).collect();
+                let mut inserted_skill_ids = HashSet::new();
+                while !pending.is_empty() {
+                    let mut waiting = Vec::new();
+                    let mut inserted = 0;
+                    for row in pending {
+                        if let Some(parent_id) = row.parent_id.as_deref() {
+                            if !skill_ids.contains(parent_id) {
+                                return Err(soloup_store::StoreError::not_found(format!(
+                                    "备份中的父技能不存在：{parent_id}"
+                                )));
+                            }
+                            if !inserted_skill_ids.contains(parent_id) {
+                                waiting.push(row);
+                                continue;
+                            }
+                        }
+                        let created = soloup_store::skills::SkillRepo { db: c }.create(&row)?;
+                        inserted_skill_ids.insert(created.id);
+                        inserted += 1;
+                    }
+                    if inserted == 0 {
+                        return Err(soloup_store::StoreError::new(
+                            soloup_store::StoreErrorCode::Cycle,
+                            "备份中的技能父子关系存在循环",
+                        ));
+                    }
+                    pending = waiting;
                 }
                 for l in &links {
                     let skill_id = l.get("skill_id").and_then(|v| v.as_str()).unwrap_or("");
