@@ -74,6 +74,15 @@ jobs:
         run: cargo fmt --all -- --check
         working-directory: src-tauri
 
+      - name: Prepare Tauri check resources
+        run: |
+          pnpm build:backend
+          pnpm --filter @soloup/web build
+          node scripts/copy-sidecars.mjs
+          if (-not (Test-Path "src-tauri/resources/web/index.html")) {
+            throw "Tauri check requires the generated web resources"
+          }
+
       - name: Check Tauri Rust build
         run: cargo check --locked
         working-directory: src-tauri
