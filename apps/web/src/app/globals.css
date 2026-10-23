@@ -31,7 +31,15 @@
   --rsr: #7c3aed;
   --rssr: #ffb020;
   --sans: 'Noto Sans SC', 'MiSans', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+  /* 数字字体：卡面上的 PTS / 进度 / 日期都用等宽数字，否则一列卡的小数点对不齐 */
+  --num: 'Segoe UI', -apple-system, 'Helvetica Neue', Arial, sans-serif;
   --px: 'Press Start 2P', 'Noto Sans SC', monospace;
+  /* 卡面箔的五个色段（衍射条）。必须是五个饱和色，不能是同一色相的明暗档 —— */
+  --rc1: #ff9aa8;
+  --rc2: #ffe08a;
+  --rc3: #9ef0bd;
+  --rc4: #96d5f7;
+  --rc5: #c3a6f5;
 }
 
 @theme inline {
@@ -1344,10 +1352,62 @@ li.closed .tw {
   border-radius: 2px;
   border: 1.5px solid var(--ink);
 }
+/* ============================================================
+   成就卡面（宝可梦实体卡结构 + poke-holo 箔层）
+   设计依据见 docs/card-face-design.md；原型 .workbuddy/proto/achievements-cards-v4.html
+
+   三条硬规矩（都是量出来的，不是审美偏好）：
+   ① 一条横向基准 --px —— 头 / 窗 / 银条 / 条件 / 两格 / 页脚全对齐它。
+      曾经 .art 4.0% / .wrr 4.8% / .cond 5.5% 三套缩进并存，最大差 3.4px。
+   ② 字号只有 5 档（17/16/19/9.5/7）。
+   ③ 纵向只用 top / height / bottom 的百分比；padding 百分比恒相对宽度，
+      和 height 混在同一个 calc() 里必错位。
+   ============================================================ */
+
+/* 指针变量注册成可插值类型 —— 这样 CSS transition 自己会平滑，
+   不需要一条 requestAnimationFrame 循环去 lerp。
+   ⚠️ inherits 必须为 true：--pointer-x 设在 .acard 上，
+   .acard-shine / .acard-glare 是它的后代，靠继承取值。 */
+@property --pointer-x {
+  syntax: '<percentage>';
+  inherits: true;
+  initial-value: 38%;
+}
+@property --pointer-y {
+  syntax: '<percentage>';
+  inherits: true;
+  initial-value: 24%;
+}
+@property --background-x {
+  syntax: '<percentage>';
+  inherits: true;
+  initial-value: 47%;
+}
+@property --background-y {
+  syntax: '<percentage>';
+  inherits: true;
+  initial-value: 39%;
+}
+@property --pointer-from-center {
+  syntax: '<number>';
+  inherits: true;
+  initial-value: 0;
+}
+@property --rotate-x {
+  syntax: '<angle>';
+  inherits: true;
+  initial-value: 0deg;
+}
+@property --rotate-y {
+  syntax: '<angle>';
+  inherits: true;
+  initial-value: 0deg;
+}
+
 .card-wall {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
-  gap: 38px 14px;
+  gap: 40px 14px;
   justify-items: center;
 }
 @media (min-width: 768px) {
@@ -1360,268 +1420,817 @@ li.closed .tw {
     grid-template-columns: repeat(4, 1fr);
   }
 }
-.acard {
+
+/* 透视容器：每张卡一个自己的消失点，整排才不会朝同一点歪 */
+.acard-stage {
+  position: relative;
   width: 100%;
   max-width: 220px;
-  aspect-ratio: 63/88;
-  perspective: 900px;
-  cursor: pointer;
-  position: relative;
+  perspective: 1100px;
   transition: transform 0.25s ease-out;
-  animation: acardIn 0.45s cubic-bezier(0.34, 1.45, 0.64, 1) both;
+}
+.acard {
+  /* ★ 唯一横向基准 */
+  --card-px: 4.4%;
+  /* ★ 纵向：全部相对 .acard-field 高度，只用 top / height / bottom */
+  --pad-t: 2.6%;
+  --pad-b: 2.2%;
+  --g: 1.6%;
+  --g2: 2.8%;
+  --z-head: 10.5%;
+  --z-art: 44.5%;
+  --z-band: 5.2%;
+  --z-wrr: 7.4%;
+  --art-top: calc(var(--pad-t) + var(--z-head) + var(--g));
+  --band-top: calc(var(--pad-t) + var(--z-head) + var(--z-art) + 2 * var(--g));
+  --cond-top: calc(var(--pad-t) + var(--z-head) + var(--z-art) + var(--z-band) + 3 * var(--g));
+  --cond-bot: calc(var(--pad-b) + var(--z-wrr) + var(--g2));
+
+  position: relative;
+  width: 100%;
+  aspect-ratio: 63/88;
+  cursor: pointer;
+  transform-style: preserve-3d;
+  transform: rotateX(var(--rotate-x)) rotateY(var(--rotate-y));
+  animation: acardIn 0.45s cubic-bezier(0.34, 1.4, 0.64, 1) both;
+  /* 指针变量靠 @property 插值，比 rAF 循环省一层 JS */
+  transition:
+    --pointer-x 0.18s ease-out,
+    --pointer-y 0.18s ease-out,
+    --background-x 0.18s ease-out,
+    --background-y 0.18s ease-out,
+    --pointer-from-center 0.18s ease-out,
+    --rotate-x 0.16s ease-out,
+    --rotate-y 0.16s ease-out;
 }
 @keyframes acardIn {
   from {
     opacity: 0;
-    transform: scale(0.85) translateY(12px);
+    transform: scale(0.92) translateY(8px);
   }
 }
 .acard-inner {
-  position: relative;
-  width: 100%;
-  height: 100%;
+  position: absolute;
+  inset: 0;
   transform-style: preserve-3d;
   transition: transform 0.55s cubic-bezier(0.3, 1.25, 0.5, 1);
 }
 .acard.flip .acard-inner {
   transform: rotateY(180deg);
 }
-.face {
+.acard-face {
   position: absolute;
   inset: 0;
-  backface-visibility: hidden;
-  border-radius: 8px;
+  border-radius: 9px;
   overflow: hidden;
-  display: flex;
-  flex-direction: column;
-  padding: 12px;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
 }
-.face.front {
-  background: var(--card);
-  border: 2px solid var(--ink);
-  box-shadow: 4px 4px 0 var(--ink);
+
+/* ---------- 外框 ----------
+   真卡框几乎是平的，只有极轻的上下推移。
+   早期版本用了 70 个亮度单位的四档渐变，读作镀膜铝箔，不像纸。 */
+.acard-face.front {
+  background: linear-gradient(181deg, #ffea80 0%, #ffe165 46%, #f6d148 80%, #efc637 100%);
+  box-shadow:
+    0 10px 22px -11px rgba(60, 50, 10, 0.42),
+    0 2px 6px -3px rgba(0, 0, 0, 0.18),
+    inset 0 1px 0 rgba(255, 255, 255, 0.75),
+    inset 0 0 0 1px rgba(120, 96, 20, 0.2);
 }
-.face.back {
-  background: repeating-linear-gradient(45deg, var(--panel) 0 8px, var(--panel-2) 8px 16px);
-  border: 2px solid var(--ink);
-  box-shadow: 4px 4px 0 var(--ink);
-  transform: rotateY(180deg);
-  align-items: center;
-  justify-content: center;
-  gap: 10px;
+/* 传说：只换「框」的材质，场仍是类型色。
+   把场也染成金的话，一张卡上「金框 + 金场 + 银条」三层金属叠着，
+   边界全糊；宝可梦金卡是框变金、插画照旧是彩的。 */
+.acard[data-r='legendary'] .acard-face.front {
+  background: linear-gradient(181deg, #f3dc98 0%, #dcb85c 38%, #c09639 74%, #a87f28 100%);
+  box-shadow:
+    0 10px 22px -11px rgba(72, 56, 10, 0.5),
+    0 2px 6px -3px rgba(0, 0, 0, 0.24),
+    inset 0 1px 0 rgba(255, 251, 220, 0.85),
+    inset 0 0 0 1px rgba(96, 72, 14, 0.32);
 }
-.epic::after {
+
+/* 主色场：黄框内缩出来的一整块 */
+.acard-field {
+  position: absolute;
+  inset: 2.4% 3.6% 7.6% 3.6%;
+  border-radius: 4.5px;
+  background: radial-gradient(116% 90% at 50% 6%, var(--fld1) 0%, var(--fld2) 52%, var(--fld3) 100%);
+  overflow: hidden;
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.46),
+    inset 0 0 22px rgba(0, 0, 0, 0.18),
+    0 1px 2px rgba(0, 0, 0, 0.14);
+}
+/* 场的纸纹 */
+.acard-field::after {
   content: '';
   position: absolute;
   inset: 0;
-  border-radius: 8px;
-  box-shadow: 0 0 16px color-mix(in srgb, var(--rc) 55%, transparent);
-  opacity: 0.4;
-  animation: breathe 2.4s ease-in-out infinite;
   pointer-events: none;
-}
-@keyframes breathe {
-  50% {
-    opacity: 0.9;
-  }
-}
-/* SSR 传说卡 v3：静态金框 + 斜向光带扫过 + 呼吸内辉 + 像素星光 */
-.legendary .face.front {
-  padding: 4px;
-  background: var(--yellow);
-}
-.face-mat {
-  position: relative;
-  z-index: 1;
-  display: flex;
-  flex-direction: column;
-  flex: 1;
-  min-height: 0;
-}
-.legendary .face-mat {
-  background: var(--card);
-  border: 2px solid var(--ink);
-  border-radius: 5px;
-  padding: 8px 8px 10px;
-}
-.ssr-shine {
-  position: absolute;
-  top: -15%;
-  bottom: -15%;
-  left: 0;
-  width: 70%;
-  background: linear-gradient(
-    100deg,
-    transparent 15%,
-    rgba(255, 176, 32, 0.45) 40%,
-    rgba(255, 255, 255, 0.85) 50%,
-    rgba(255, 176, 32, 0.45) 60%,
-    transparent 85%
+  z-index: 7;
+  background-image: repeating-linear-gradient(
+    118deg,
+    rgba(255, 255, 255, 0.055) 0 0.5px,
+    transparent 0.5px 1.6px
   );
-  transform: translateX(-130%) skewX(-12deg);
-  animation: ssrSweep 3.4s ease-in-out infinite;
-  z-index: 2;
-  pointer-events: none;
+  mix-blend-mode: soft-light;
+  opacity: 0.9;
 }
-@keyframes ssrSweep {
-  0% {
-    transform: translateX(-130%) skewX(-12deg);
-  }
-  55%,
-  100% {
-    transform: translateX(250%) skewX(-12deg);
-  }
+
+/* 类型色：饱和档。淡彩配黑字会发灰，这是「配色丑」的根因 */
+.acard[data-t='skill'] {
+  --fld1: #63a6e4;
+  --fld2: #3a7cc2;
+  --fld3: #2e62a0;
+  --accent: #8fc4f2;
 }
-.ssr-glow {
+.acard[data-t='attribute'] {
+  --fld1: #ab80e0;
+  --fld2: #8259bd;
+  --fld3: #67419f;
+  --accent: #c9a8f2;
+}
+.acard[data-t='project'] {
+  --fld1: #ee9557;
+  --fld2: #c96a2a;
+  --fld3: #9c4a17;
+  --accent: #ffc78a;
+}
+.acard[data-t='milestone'] {
+  --fld1: #71c79b;
+  --fld2: #489e73;
+  --fld3: #36825f;
+  --accent: #9fe0bd;
+}
+
+/* ---------- 特效层 ----------
+   稀有度的差别是「箔的面积」，不是「亮度数值」：
+   common 无箔 / rare 仅插画窗 / epic 插画窗外（铺满整卡）/ legendary 整卡换金材质。 */
+.acard-gold {
   position: absolute;
   inset: 0;
-  border-radius: 8px;
-  box-shadow: inset 0 0 18px 3px rgba(255, 176, 32, 0.65);
-  opacity: 0.35;
-  animation: ssrGlow 2.4s ease-in-out infinite;
+  display: none;
+  pointer-events: none;
+  z-index: 0;
+  background-image:
+    radial-gradient(circle at 1px 1px, rgba(255, 255, 255, 0.9) 0.7px, rgba(120, 96, 40, 0.22) 0),
+    conic-gradient(from 200deg at 50% 46%, #f9edb4, #d8b258, #fff6cd, #b8903a, #f9edb4);
+  background-size:
+    19px 19px,
+    260% 260%;
+  background-position:
+    calc(45% + var(--background-x) * 0.12) calc(45% + var(--background-y) * 0.12),
+    calc(50% + (50% - var(--background-x)) * 0.8) calc(50% + (50% - var(--background-y)) * 0.8);
+  background-blend-mode: soft-light, normal;
+  filter: brightness(calc(0.95 + var(--pointer-from-center) * 0.18)) contrast(1.16) saturate(1.1);
+  /* ★ 只有 color 能真正染色：它取源色的色相+饱和度、保留底的明暗。
+     overlay 会强化底色原色相（橙叠金更橙），color-dodge 直接把金提成白。 */
+  mix-blend-mode: color;
+  opacity: var(--go, 0);
+  transition: opacity 0.3s ease;
+}
+
+/* 插画窗 / 箔 / 徽记共用同一组 left/right/top/height —— 物理上不可能错位。
+   早期用 clip-path: inset() 裁箔，而 inset 的百分比基准和 height 不同，
+   一改内边距就和窗子错位。 */
+.acard-art,
+.acard-shine,
+.zone-emb {
+  position: absolute;
+  left: var(--card-px);
+  right: var(--card-px);
+  top: var(--art-top);
+  height: var(--z-art);
+}
+.acard-shine {
   z-index: 2;
   pointer-events: none;
-}
-@keyframes ssrGlow {
-  50% {
-    opacity: 1;
-  }
-}
-.ssr-spark {
-  position: absolute;
-  width: 10px;
-  height: 10px;
-  background: var(--yellow);
-  border: 1.5px solid var(--ink);
-  border-radius: 2px;
-  z-index: 3;
-  opacity: 0;
-  animation: ssrSpark 2.4s ease-in-out infinite;
-  pointer-events: none;
-}
-.ssr-spark.s1 {
-  top: 9%;
-  left: 9%;
-  animation-delay: 0.2s;
-}
-.ssr-spark.s2 {
-  top: 20%;
-  right: 12%;
-  animation-delay: 1s;
-}
-.ssr-spark.s3 {
-  bottom: 12%;
-  left: 20%;
-  animation-delay: 1.8s;
-}
-@keyframes ssrSpark {
-  0%,
-  100% {
-    opacity: 0;
-    transform: rotate(45deg) scale(0.3);
-  }
-  50% {
-    opacity: 1;
-    transform: rotate(45deg) scale(1);
-  }
-}
-.locked .face.front {
-  filter: grayscale(1);
-  opacity: 0.55;
-}
-.deep-locked .face.front {
-  filter: grayscale(1) brightness(0.7);
-  opacity: 0.35;
-}
-.deep-locked .face.back {
-  filter: grayscale(1);
-  opacity: 0.6;
-}
-.gem {
-  width: 12px;
-  height: 12px;
-  background: var(--rc);
-  transform: rotate(45deg);
-  border-radius: 2px;
-  margin: 0 auto;
-  border: 2px solid var(--ink);
-  flex-shrink: 0;
-}
-.aicon {
-  width: 52px;
-  height: 52px;
-  margin: 12px auto 8px;
   border-radius: 6px;
-  background: color-mix(in srgb, var(--rc) 12%, #fff);
-  border: 2px solid var(--ink);
+  overflow: hidden;
+  background-repeat: no-repeat;
+  background-image: repeating-linear-gradient(
+    112deg,
+    var(--rc1) 0% 3.4%,
+    var(--rc2) 3.4% 6.8%,
+    var(--rc3) 6.8% 10.2%,
+    var(--rc4) 10.2% 13.6%,
+    var(--rc5) 13.6% 17%
+  );
+  /* x 乘 2.6、y 乘 3.5 —— 两个不同系数自然得到斜向位移，不用写角度 */
+  background-position:
+    calc(((50% - var(--background-x)) * 2.6) + 50%)
+    calc(((50% - var(--background-y)) * 3.5) + 50%);
+  background-size: 230% 230%;
+  /* 亮度是倾斜角的函数：越往外越亮，像真箔把光甩出去 */
+  filter: brightness(calc(0.3 + var(--pointer-from-center) * 0.17)) contrast(1.85) saturate(1.1);
+  mix-blend-mode: color-dodge;
+  opacity: var(--fo, 0);
+  transition: opacity 0.3s ease;
+}
+/* 衍射细纹：必须是硬边界（c1 0% 3.4%, c2 3.4% 6.8%），
+   不给显式 stop 会被插值成「渐变海报」。 */
+.acard-shine::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image: repeating-linear-gradient(
+    128deg,
+    rgba(255, 255, 255, 0.5) 0 0.5px,
+    rgba(0, 0, 0, 0.45) 0.5px 1px
+  );
+  mix-blend-mode: hard-light;
+  opacity: 0.32;
+}
+.acard-shine::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image: radial-gradient(
+    farthest-corner circle at var(--pointer-x) var(--pointer-y),
+    hsla(0, 0%, 95%, 0.5) 0%,
+    hsla(0, 0%, 66%, 0.06) 38%,
+    #000 94%
+  );
+  mix-blend-mode: luminosity;
+  filter: brightness(0.72) contrast(2.1);
+}
+.acard-glare {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  pointer-events: none;
+  border-radius: 9px;
+  background-image: radial-gradient(
+    farthest-corner circle at var(--pointer-x) var(--pointer-y),
+    hsla(0, 0%, 100%, 0.5) 6%,
+    hsla(0, 0%, 100%, 0.34) 26%,
+    hsla(0, 0%, 0%, 0.3) 94%
+  );
+  mix-blend-mode: overlay;
+  filter: brightness(0.92) contrast(1.3);
+  opacity: var(--gl, 0);
+  transition: opacity 0.3s ease;
+}
+
+/* 四档工艺 */
+.acard[data-r='common'] .acard-shine {
+  display: none;
+}
+.acard[data-r='common'] {
+  --fo: 0;
+  --gl: 0.22;
+}
+.acard[data-r='rare'] {
+  --fo: 0.42;
+  --gl: 0.28;
+}
+.acard[data-r='rare']:hover {
+  --fo: 0.82;
+  --gl: 0.5;
+}
+.acard[data-r='epic'] {
+  --fo: 0.26;
+  --gl: 0.16;
+}
+.acard[data-r='epic']:hover {
+  --fo: 0.52;
+  --gl: 0.32;
+}
+/* SR：箔铺满整卡（覆盖上面那套窗定位） */
+.acard[data-r='epic'] .acard-shine {
+  top: 0;
+  bottom: 0;
+  height: auto;
+  border-radius: 9px;
+  background-size: 280% 280%;
+  filter: brightness(calc(0.62 + var(--pointer-from-center) * 0.18)) contrast(1.3) saturate(1.15);
+  mix-blend-mode: overlay;
+}
+.acard[data-r='epic'] .acard-shine::before {
+  opacity: 0.24;
+}
+/* SSR：箔仍只在插画窗，但整卡再叠一层金材质（.acard-gold） */
+.acard[data-r='legendary'] {
+  --fo: 0.38;
+  --gl: 0.4;
+  --go: 0.16;
+}
+.acard[data-r='legendary']:hover {
+  --fo: 0.42;
+  --gl: 0.66;
+  --go: 0.34;
+}
+.acard[data-r='legendary'] .acard-shine {
+  filter: brightness(calc(0.42 + var(--pointer-from-center) * 0.35)) contrast(2.4) saturate(1.35);
+}
+
+/* 未解锁：降箔、压饱和，但字和条件照样清楚 —— 只削「点亮」，不削「信息」。
+   ⚠️ 别用 saturate 抽太狠：类型色是这套卡的分类信号，抽掉就 22 张一个样。 */
+.acard.locked {
+  --fo: 0.05;
+  --gl: 0.06;
+  --go: 0.05;
+}
+.acard.locked .acard-field {
+  filter: saturate(0.72) brightness(0.93);
+}
+.acard.locked .acard-art {
+  filter: saturate(0.74) brightness(0.8);
+}
+.acard.locked .zone-emb svg {
+  opacity: 0.66;
+  stroke-width: 1.5;
+}
+.acard:not(.locked) .zone-emb svg {
+  filter: drop-shadow(0 0 5px rgba(255, 255, 255, 0.6)) drop-shadow(0 1px 1px rgba(0, 0, 0, 0.8))
+    drop-shadow(0 2px 4px rgba(0, 0, 0, 0.5));
+}
+/* 前置未解锁（内容整段不可见） */
+.acard.deep {
+  --fo: 0;
+  --gl: 0;
+  --go: 0;
+}
+.acard.deep .acard-field {
+  filter: grayscale(0.7) brightness(0.86);
+}
+
+/* ---------- 插画窗 ---------- */
+.acard-art {
+  z-index: 1;
+  overflow: hidden;
+  border-radius: 6px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.14) 0%, transparent 26%),
+    radial-gradient(92% 76% at 50% 26%, var(--a3) 0%, rgba(0, 0, 0, 0) 62%),
+    linear-gradient(178deg, var(--a1) 0%, var(--a2) 78%, var(--a4) 100%);
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.9),
+    inset 0 0 0 2px rgba(0, 0, 0, 0.4),
+    0 1px 3px rgba(0, 0, 0, 0.32);
+}
+.acard[data-t='skill'] {
+  --a1: #3f82bd;
+  --a2: #173f68;
+  --a3: #7fc0f0;
+  --a4: #0c2439;
+}
+.acard[data-t='attribute'] {
+  --a1: #8b5ec4;
+  --a2: #442672;
+  --a3: #c08ef2;
+  --a4: #241041;
+}
+.acard[data-t='project'] {
+  --a1: #c9682c;
+  --a2: #63280a;
+  --a3: #f0a35e;
+  --a4: #320f02;
+}
+.acard[data-t='milestone'] {
+  --a1: #3f9e78;
+  --a2: #175640;
+  --a3: #77d6a8;
+  --a4: #0a2e21;
+}
+.acard[data-r='legendary'] .acard-art {
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 246, 205, 0.95),
+    inset 0 0 0 2px rgba(60, 42, 10, 0.55),
+    0 1px 3px rgba(0, 0, 0, 0.35);
+}
+
+/* 场景 6 种：解决「22 张卡一个品种」。
+   ⚠️ 透明度 0.13 在这个尺寸下等于没画，必须 0.24 以上。 */
+.acard-art::before {
+  content: '';
+  position: absolute;
+  inset: -3%;
+  z-index: 0;
+}
+.acard[data-sc='rays'] .acard-art::before {
+  background: repeating-conic-gradient(
+    from 0deg at 50% 64%,
+    rgba(255, 255, 255, 0.19) 0 5deg,
+    transparent 5deg 16deg
+  );
+}
+.acard[data-sc='rings'] .acard-art::before {
+  background: repeating-radial-gradient(
+    circle at 50% 66%,
+    rgba(255, 255, 255, 0.28) 0 1.8px,
+    transparent 1.8px 15px
+  );
+}
+.acard[data-sc='wave'] .acard-art::before {
+  background: repeating-linear-gradient(
+    116deg,
+    rgba(255, 255, 255, 0.26) 0 16px,
+    transparent 16px 44px
+  );
+}
+.acard[data-sc='dots'] .acard-art::before {
+  background-image: radial-gradient(circle, rgba(255, 255, 255, 0.34) 0 1.1px, transparent 1.5px);
+  background-size: 13px 13px;
+}
+.acard[data-sc='diag'] .acard-art::before {
+  background: repeating-linear-gradient(
+    42deg,
+    rgba(255, 255, 255, 0.24) 0 3px,
+    transparent 3px 15px
+  );
+}
+.acard[data-sc='stars'] .acard-art::before {
+  background-image:
+    radial-gradient(circle at 22% 28%, #fff 0 1.3px, transparent 2.4px),
+    radial-gradient(circle at 74% 22%, #fff 0 1.1px, transparent 2.2px),
+    radial-gradient(circle at 38% 68%, #fff 0 1.2px, transparent 2.3px),
+    radial-gradient(circle at 82% 62%, #fff 0 1.4px, transparent 2.5px),
+    radial-gradient(circle at 58% 44%, #fff 0 1px, transparent 2.1px),
+    radial-gradient(circle at 14% 76%, #fff 0 1px, transparent 2px),
+    radial-gradient(circle at 90% 40%, #fff 0 0.9px, transparent 1.9px);
+  opacity: 0.85;
+}
+/* 底部压暗，给徽记一个立脚点（地平线，不是放射暗角） */
+.acard-art::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  background: linear-gradient(
+    180deg,
+    rgba(0, 0, 0, 0) 68%,
+    rgba(0, 0, 0, 0.07) 80%,
+    rgba(0, 0, 0, 0.22) 92%,
+    rgba(0, 0, 0, 0.34) 100%
+  );
+}
+
+/* 徽记：描边式，压在场景上让底纹透过去 */
+.zone-emb {
+  z-index: 3;
   display: flex;
   align-items: center;
   justify-content: center;
+  pointer-events: none;
+}
+.zone-emb svg {
+  width: 47%;
+  height: auto;
+  fill: none;
+  stroke: #fff;
+  stroke-width: 1.55;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.8)) drop-shadow(0 2px 4px rgba(0, 0, 0, 0.5));
+}
+/* 金卡徽记用亮金描边。
+   ⚠️ 别用深棕刻线：深棕的语义是「金字上压出的凹槽」，前提是底色为金；
+   我们的金卡底色是类型色，深棕压上去看不见。 */
+.acard[data-r='legendary'] .zone-emb svg {
+  stroke: #f7e3a4;
+  filter: drop-shadow(0 1px 1px rgba(40, 26, 0, 0.85)) drop-shadow(0 0 6px rgba(255, 226, 140, 0.5));
+}
+
+/* ---------- 银条 ----------
+   真卡银件是 #FFFFFF → #CED3D6 的单向渐变。
+   做成「白 → 灰 → 白」三段的话，中间那道灰线读作金属管，太抢。 */
+.acard-silver {
+  background: linear-gradient(180deg, #fcfdfe 0%, #f1f4f7 44%, #d9dfe5 100%);
+  box-shadow:
+    0 0 0 0.7px rgba(0, 0, 0, 0.42),
+    inset 0 0.7px 0 #fff,
+    inset 0 -0.7px 0 rgba(0, 0, 0, 0.1),
+    0 0.8px 1.6px rgba(0, 0, 0, 0.22);
+}
+
+/* ---------- 名字带 ----------
+   只放三件：名字 / PTS / 类型球。
+   稀有度胶囊移到银条里（那里本来就有「传说」两个字），
+   否则这 31px 里塞四件，名字会被 flex:1 挤成一小截。 */
+.zone-head {
+  position: absolute;
+  z-index: 6;
+  left: var(--card-px);
+  right: var(--card-px);
+  top: var(--pad-t);
+  height: var(--z-head);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.acard-nm {
+  flex: 1;
+  min-width: 0;
+  font-size: 17px;
+  font-weight: 900;
+  letter-spacing: -0.2px;
+  line-height: 1.05;
+  color: #141519;
+  text-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.5),
+    0 1px 2px rgba(0, 0, 0, 0.12);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.acard-pts {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+  flex-shrink: 0;
+  line-height: 1;
+}
+.acard-pts s {
+  font-family: var(--num);
+  font-size: 8.6px;
+  font-weight: 900;
+  letter-spacing: 0.3px;
+  color: #3d3410;
+  text-decoration: none;
+}
+.acard-pts b {
+  font-family: var(--num);
+  font-size: 16px;
+  font-weight: 900;
+  letter-spacing: -0.6px;
+  color: #141519;
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.45);
+  font-variant-numeric: tabular-nums;
+}
+.acard-orb {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background: radial-gradient(circle at 36% 30%, #fff 0%, var(--accent) 52%, var(--fld3) 100%);
+  box-shadow:
+    0 0 0 1.3px #fff,
+    0 0 0 2.2px rgba(0, 0, 0, 0.4),
+    inset 0 -1px 2px rgba(0, 0, 0, 0.3);
+}
+
+/* 插画窗下的属性银条 */
+.zone-band {
+  position: absolute;
+  z-index: 6;
+  left: var(--card-px);
+  right: var(--card-px);
+  top: var(--band-top);
+  height: var(--z-band);
+  border-radius: 999px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 7.6px;
+  font-weight: 700;
+  letter-spacing: 0.25px;
+  color: #3b4048;
+  font-variant-numeric: tabular-nums;
+  padding: 0 6px;
+  white-space: nowrap;
+  overflow: hidden;
+}
+/* 段间用竖线分隔（宝可梦银条就是这么分的，不是用点） */
+.zone-band > span {
+  padding: 0 12px;
+}
+.zone-band > span:first-child {
+  padding-left: 4px;
+}
+.zone-band > span:last-child {
+  padding-right: 4px;
+}
+.zone-band > span + span {
+  border-left: 1px solid rgba(0, 0, 0, 0.18);
+}
+.zone-band b,
+.zone-band .acard-rar {
+  font-weight: 800;
+  color: #111;
+}
+
+/* ---------- 条件区 ---------- */
+.zone-cond {
+  position: absolute;
+  z-index: 6;
+  left: var(--card-px);
+  right: var(--card-px);
+  top: var(--cond-top);
+  bottom: var(--cond-bot);
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding-bottom: 3%;
+}
+.acard-big {
+  font-family: var(--num);
+  font-size: 16px;
+  font-weight: 900;
+  letter-spacing: -0.4px;
+  color: #121317;
+  line-height: 1;
+  margin-top: 2px;
+  font-variant-numeric: tabular-nums;
+  text-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.45),
+    0 1px 2px rgba(0, 0, 0, 0.14);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  /* 容器高度是「撑满剩余」，内容高度是固定的：
+     不锁 flex-shrink 的话，剩余空间不足时会把这两个子项一起压扁，
+     19px 的字被压到十几像素再被 overflow:hidden 裁掉一半。 */
   flex-shrink: 0;
 }
-.aicon svg {
-  width: 26px;
-  height: 26px;
-  fill: var(--rc);
+.acard-text {
+  margin-top: 5px;
+  flex-shrink: 0;
+  font-size: 9.5px;
+  line-height: 1.45;
+  color: #0f1116;
+  font-weight: 600;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  /* 两种情况都占两行高：否则 1 行卡和 2 行卡在册子里上下不齐 */
+  min-height: 27.6px;
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.3);
 }
-.aname {
-  font-weight: 900;
-  font-size: 17px;
-  text-align: center;
-  letter-spacing: 2px;
-}
-.legendary .aname {
-  color: var(--red-deep);
-}
-.adesc {
-  font-size: 11px;
-  color: var(--text-2);
-  text-align: center;
-  margin-top: 6px;
-  flex: 1;
-  line-height: 1.5;
-}
-.afoot {
-  display: flex;
-  justify-content: space-between;
-  font-size: 10px;
-  color: var(--text-3);
-  font-weight: 700;
-  letter-spacing: 1px;
-}
-.rarity-tag {
-  text-align: center;
-  font-size: 10px;
-  color: var(--text-2);
-  font-weight: 700;
-  letter-spacing: 2px;
-  margin-top: 4px;
-}
-.pxcode {
-  font-family: var(--px);
-  font-size: 9px;
-  color: var(--rc);
-  letter-spacing: 0;
-}
-.rtag {
+
+/* ---------- 两格数据银条 ----------
+   「状态 进行中」和「进度 2%」是同一件事，已删；unlocked 由卡面明暗表达。
+   分格银条是语法，格数不是 —— 宝可梦自己 2~4 格都有。 */
+.zone-wrr {
   position: absolute;
-  top: 8px;
-  right: 8px;
-  font-family: var(--px);
-  font-size: 8px;
-  color: #fff;
-  background: var(--rc);
-  border: 2px solid var(--ink);
-  box-shadow: 2px 2px 0 var(--ink);
+  z-index: 6;
+  left: var(--card-px);
+  right: var(--card-px);
+  bottom: var(--pad-b);
+  height: var(--z-wrr);
   border-radius: 4px;
-  padding: 5px 6px;
+  display: flex;
+  align-items: center;
+  overflow: hidden;
+}
+.acell {
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 2px 2px 1px;
+  white-space: nowrap;
+  overflow: hidden;
   line-height: 1;
-  z-index: 4;
 }
-.rtag-ink {
-  color: var(--ink);
+.acell + .acell {
+  border-left: 1px solid rgba(0, 0, 0, 0.2);
 }
-.acard .hint {
+/* ★ 标签必须比「值」弱。曾经标签用了深红，比黑色数值还跳，
+   一格里两个东西抢注意力 —— 那不是字号问题，是层级问题。 */
+.acell-label {
+  font-size: 7px;
+  font-weight: 700;
+  letter-spacing: 0.35px;
+  color: rgba(0, 0, 0, 0.4);
+  flex-shrink: 0;
+  margin-bottom: 2.5px;
+}
+.acell-val {
+  font-size: 9.4px;
+  font-weight: 900;
+  color: #15171b;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.15px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ---------- 底部黄带 ----------
+   左边缘和上面各段对齐到同一条竖线；出血到 0 会和银条错开。 */
+.zone-foot {
+  position: absolute;
+  z-index: 6;
+  left: calc(3.6% + 4.4%);
+  right: calc(3.6% + 4.4%);
+  bottom: 1.9%;
+  height: 5.7%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+.acard-fnote {
+  font-family: var(--num);
+  font-size: 7.2px;
+  font-weight: 700;
+  letter-spacing: 0.55px;
+  color: #7a5f12;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.acard-glyph {
+  font-size: 12px;
+  line-height: 1;
+  color: #5c460c;
+  letter-spacing: -0.5px;
+  flex-shrink: 0;
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.5);
+}
+.acard[data-r='legendary'] .acard-fnote {
+  color: #fdf1cd;
+}
+.acard[data-r='legendary'] .acard-glyph {
+  color: #fff6da;
+  text-shadow: 0 1px 1px rgba(70, 50, 6, 0.7);
+}
+
+/* 隐藏成就：名字未揭示时打码而不是整卡变灰，条件区仍可读 */
+.acard.masked .acard-nm {
+  letter-spacing: 3px;
+  color: #3a3d44;
+}
+.acard.masked .zone-emb svg {
+  stroke: #9aa4b2;
+  opacity: 0.5;
+  filter: none;
+}
+.acard.masked .acard-text {
+  color: #4a4f58;
+  font-style: italic;
+}
+
+/* ---------- 背面 ---------- */
+.acard-face.back {
+  transform: rotateY(180deg);
+  background: linear-gradient(181deg, #ffea80 0%, #ffe165 46%, #f2ce44 100%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  padding: 18px 14px;
+  color: #3a2f08;
+  box-shadow: inset 0 0 0 1px rgba(120, 96, 20, 0.26);
+}
+.acard-backmark {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 38% 32%, #fff 0%, #ffe89a 46%, #d9b13a 100%);
+  box-shadow:
+    0 1px 4px rgba(90, 70, 10, 0.45),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  color: #6b5210;
+  font-weight: 900;
+  flex-shrink: 0;
+}
+.acard-btxt {
+  font-size: 10px;
+  text-align: center;
+  line-height: 1.65;
+  color: #2e2407;
+}
+.acard-btxt b {
+  color: #1a1405;
+}
+.acard-bdate {
+  font-family: var(--num);
+  font-size: 11px;
+  font-weight: 900;
+  color: #57410a;
+  letter-spacing: 0.4px;
+  font-variant-numeric: tabular-nums;
+}
+.acard-bplit {
+  width: 80%;
+  height: 6px;
+  background: rgba(90, 70, 10, 0.34);
+  border-radius: 3px;
+  overflow: hidden;
+  box-shadow: inset 0 1px 2px rgba(70, 50, 5, 0.4);
+}
+.acard-bplit i {
+  display: block;
+  height: 100%;
+  background: linear-gradient(180deg, #fff, #e8b93a);
+}
+.acard-bmark {
+  font-size: 7.5px;
+  letter-spacing: 2.5px;
+  color: rgba(70, 52, 5, 0.62);
+  font-weight: 900;
+}
+.acard-hint {
   position: absolute;
   bottom: -22px;
   left: 0;
@@ -1633,17 +2242,6 @@ li.closed .tw {
   transition:
     opacity 0.2s,
     color 0.2s;
-}
-.back-mark {
-  font-weight: 900;
-  font-size: 20px;
-  color: var(--text-2);
-  letter-spacing: 4px;
-}
-.qq {
-  font-family: var(--px);
-  font-size: 18px;
-  color: var(--red);
 }
 
 /* ===== 交互动效（hover 抬升） ===== */
@@ -1680,10 +2278,12 @@ li.closed .tw {
     transform: translate(-2px, -2px);
     box-shadow: 5px 5px 0 var(--ink);
   }
-  .acard:hover {
-    transform: translateY(-6px) rotate(-1.2deg);
+  /* .acard 的 transform 已被指针倾斜占用（rotateX/rotateY），
+     抬升只能放在外层 stage 上，否则两者互相覆盖。 */
+  .acard-stage:hover {
+    transform: translateY(-4px);
   }
-  .acard:hover .hint {
+  .acard:hover .acard-hint {
     opacity: 1;
     color: var(--red);
   }

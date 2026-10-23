@@ -68,6 +68,8 @@ export interface RustAchievement {
   requires: string[] | null;
   reveal_at: number | null;
   unlocked: boolean;
+  /** 首次达成日（后端落库，写一次不再覆盖）；老库升级首跑前可能是 null */
+  unlocked_at: string | null;
 }
 export interface Bootstrap {
   date: string;
@@ -170,9 +172,12 @@ function mapBootstrap(b: Bootstrap): AppState {
     revealAt: a.reveal_at ?? null,
   }));
 
-  // 解锁判定由后端按 condition 求值给出（unlocked_at 列不落库），面板按当天日期展示
+  // 解锁判定由后端按 condition 求值给出；`unlocked_at` 由后端在首次达成时落库（只写一次，永不覆盖）。
+  // 老库第一次跑新版这一列才刚被写上「今天」，所以仍保留 todayKey() 兜底，
+  // 否则历史解锁的卡在升级当天会显示「达成日 —」。
   const unlocked: Record<string, string> = {};
-  for (const a of b.achievements ?? []) if (a.unlocked) unlocked[a.id] = todayKey();
+  for (const a of b.achievements ?? [])
+    if (a.unlocked) unlocked[a.id] = a.unlocked_at ?? todayKey();
 
   const prof = b.profile ?? {};
   const settings: Settings = {

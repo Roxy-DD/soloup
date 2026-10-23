@@ -823,7 +823,7 @@ pub fn dispatch(solver: &mut Solver, op: &str, args: &Value) -> Result<Value, Rp
         }
 
         "achievements" => {
-            let list = solver.store.achievements().list()?;
+            let mut list = solver.store.achievements().list()?;
             let stats = dispatch(solver, "stats", &json!({}))?;
             let total_days = stats.get("totalDays").and_then(|v| v.as_i64()).unwrap_or(0);
             let streak = stats.get("streak").and_then(|v| v.as_i64()).unwrap_or(0);
@@ -862,6 +862,24 @@ pub fn dispatch(solver: &mut Solver, op: &str, args: &Value) -> Result<Value, Rp
             // 未知依赖和循环依赖不会被解锁。
             let unlocked_ids =
                 resolve_unlocked_achievements(&list, |cond| eval_condition(cond, &stat_values));
+            // ★ 首次达成落库。成就判定一直是「每次请求按 condition 现算」，日期没有落脚点，
+            //   于是卡面上的「达成日」永远等于今天 —— 那不是画错，是数据缺失。
+            //   这里是判定的唯一集中出口，顺手把时间戳写回；只写 NULL 的行，写一次就不再动。
+            let today = today_iso();
+            let fresh: Vec<String> = list
+                .iter()
+                .filter(|a| a.unlocked_at.is_none() && unlocked_ids.contains(&a.id))
+                .map(|a| a.id.clone())
+                .collect();
+            if !fresh.is_empty() {
+                solver.store.achievements().stamp_new_unlocks(&fresh, &today)?;
+                // 同步内存副本，省一次全表重查
+                for a in list.iter_mut() {
+                    if fresh.contains(&a.id) {
+                        a.unlocked_at = Some(today.clone());
+                    }
+                }
+            }
             Ok(json!(list
                 .iter()
                 .map(|a| json!({
@@ -869,7 +887,8 @@ pub fn dispatch(solver: &mut Solver, op: &str, args: &Value) -> Result<Value, Rp
                     "type": a.r#type, "rarity": a.rarity, "points": a.points,
                     "condition": a.condition_json,
                     "hidden": a.hidden, "requires": a.requires, "reveal_at": a.reveal_at,
-                    "unlocked": unlocked_ids.contains(&a.id)
+                    "unlocked": unlocked_ids.contains(&a.id),
+                    "unlocked_at": a.unlocked_at
                 }))
                 .collect::<Vec<_>>()))
         }

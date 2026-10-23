@@ -117,4 +117,23 @@ impl AchievementRepo<'_> {
             .execute("DELETE FROM achievements WHERE id = ?1", params![id])?;
         Ok(())
     }
+
+    /// 首次达成落库：只写 `unlocked_at IS NULL` 的行，**永不覆盖**已有时间戳。
+    ///
+    /// 返回实际写入的行数 —— 第二次调用恒为 0，可直接当幂等判据。
+    /// 不覆盖是刻意的：`unlocked_at` 语义是「第一次达成的那天」，
+    /// 之后断签、删记录导致的条件不再满足，都不该把这个日期抹掉。
+    pub fn stamp_new_unlocks(&self, ids: &[String], at: &str) -> Result<usize, StoreError> {
+        if ids.is_empty() {
+            return Ok(0);
+        }
+        let mut stmt = self.db.prepare(
+            "UPDATE achievements SET unlocked_at = ?2 WHERE id = ?1 AND unlocked_at IS NULL",
+        )?;
+        let mut n = 0usize;
+        for id in ids {
+            n += stmt.execute(params![id, at])?;
+        }
+        Ok(n)
+    }
 }
