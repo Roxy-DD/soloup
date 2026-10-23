@@ -70,6 +70,27 @@ if (existsSync(MAKENSIS) && existsSync(nsiScript)) {
     writeFileSync(nsiScript, orig);
   }
   console.log('[upx] 安装包已更新:', installerOut);
+
+  // ★ 重要：makensis 重建后安装包字节已经变了，cargo tauri build 阶段生成的
+  // `.sig` 因此失效。这里必须重签，否则应用内更新会在验签阶段直接失败。
+  // 注意 `signer sign` 用的是 TAURI_PRIVATE_KEY / TAURI_PRIVATE_KEY_PATH，
+  // 与打包器读的 TAURI_SIGNING_PRIVATE_KEY 不是同一组变量，所以这里显式传参。
+  if (conf.bundle?.createUpdaterArtifacts) {
+    const keyEnv = process.env.TAURI_SIGNING_PRIVATE_KEY;
+    if (keyEnv) {
+      console.log('[upx] 重新签名安装包（NSIS 已重建，原签名失效）...');
+      const flag = existsSync(keyEnv) ? '-f' : '-k';
+      const pw = process.env.TAURI_SIGNING_PRIVATE_KEY_PASSWORD;
+      const pwArg = pw ? ` -p "${pw}"` : '';
+      execSync(`cargo tauri signer sign ${flag} "${keyEnv}"${pwArg} "${installerOut}"`, {
+        cwd: tauriDir,
+        stdio: 'inherit',
+      });
+    } else {
+      console.warn('[upx] 未设置 TAURI_SIGNING_PRIVATE_KEY，安装包签名未更新');
+      console.warn('[upx] 本地自用无碍；对外发布请走 CI（CI 不跑 UPX）');
+    }
+  }
 } else {
   console.log('[upx] makensis 或 nsi 脚本未找到，跳过安装包重建');
   if (!existsSync(MAKENSIS)) console.log('[upx]   缺少:', MAKENSIS);

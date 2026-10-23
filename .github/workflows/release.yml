@@ -150,11 +150,17 @@ jobs:
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # 应用内更新（tauri-plugin-updater）要求安装包带 minisign 签名。
+          # 私钥只存在于仓库 Secret 里，绝不入库；公钥在 tauri.conf.json 的
+          # plugins.updater.pubkey，两者必须成对。
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           tagName: ${{ github.event_name == 'workflow_dispatch' && inputs.tag_name || github.ref_name }}
           releaseName: "Soloup ${{ github.event_name == 'workflow_dispatch' && inputs.tag_name || github.ref_name }}"
           releaseBody: |
             下载下方 Assets 里的 `Soloup_<version>_x64-setup.exe`，双击安装即可（Windows x64）。
+            已安装 1.4.0 及以上版本的用户可以直接在应用内「设置 → 关于与更新」里升级。
 
             完整更新内容见仓库 [CHANGELOG.md](../blob/main/CHANGELOG.md)。
           releaseDraft: false

@@ -1,6 +1,6 @@
 [package]
 name = "soloup-app"
-version = "1.3.4"
+version = "1.4.0"
 edition = "2021"
 
 [dependencies]
@@ -11,6 +11,7 @@ tauri-plugin-single-instance = "2"
 tauri-plugin-dialog = "2"
 tauri-plugin-fs = "2"
 tauri-plugin-autostart = "2.5"
+tauri-plugin-updater = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_System_JobObjects", "Win32_System_Threading"] }

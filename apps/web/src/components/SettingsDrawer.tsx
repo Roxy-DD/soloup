@@ -1,10 +1,18 @@
 'use client';
 /* ================= 设置抽屉：角色 / 生命进度轴 / 记录 / 外观与动效 / MCP 服务 / 数据 ================= */
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
 import type { AppState } from '@/lib/types';
 import { Drawer } from './Drawer';
 import { checkMcpHealth, getMcpToolCount, rpc } from '@/lib/api';
 import { getAutostart, isDesktop, setAutostart } from '@/lib/autostart';
+import {
+  canUpdate,
+  checkUpdate,
+  getAppVersion,
+  installUpdate,
+  onUpdateProgress,
+  type UpdateInfo,
+} from '@/lib/update';
 
 /**
  * 复制文本。
@@ -149,6 +157,92 @@ export function SettingsDrawer({
     },
     [toast],
   );
+
+  /* ---------------- 应用内更新 ----------------
+   * 只走 Rust 侧命令（见 lib/update.ts）。检查失败不当异常抛出，而是落到
+   * 'error' 状态里显示，避免断网时面板一片安静、用户以为按钮坏了。
+   */
+  const [appVersion, setAppVersion] = useState<string | null>(null);
+  const [updPhase, setUpdPhase] = useState<
+    'idle' | 'checking' | 'latest' | 'available' | 'installing' | 'error'
+  >('idle');
+  const [updInfo, setUpdInfo] = useState<UpdateInfo | null>(null);
+  const [updError, setUpdError] = useState<string | null>(null);
+  const [updProgress, setUpdProgress] = useState<{
+    downloaded: number;
+    total: number | null;
+  } | null>(null);
+
+  const runCheck = useCallback(
+    async (announce: boolean) => {
+      if (!canUpdate()) {
+        if (announce) toast('仅桌面版支持应用内更新');
+        return;
+      }
+      setUpdPhase('checking');
+      setUpdError(null);
+      const res = await checkUpdate();
+      if (!res.ok) {
+        setUpdPhase('error');
+        setUpdError(res.error);
+        if (announce) toast('检查更新失败：' + res.error);
+        return;
+      }
+      if (res.info) {
+        setUpdInfo(res.info);
+        setUpdPhase('available');
+        if (announce) toast(`发现新版本 v${res.info.version}`);
+      } else {
+        setUpdPhase('latest');
+        if (announce) toast('已经是最新版本');
+      }
+    },
+    [toast],
+  );
+
+  const runInstall = useCallback(async () => {
+    setUpdPhase('installing');
+    setUpdProgress({ downloaded: 0, total: null });
+    setUpdError(null);
+    try {
+      // 成功路径下进程会被安装器接管，这里不会返回
+      await installUpdate();
+    } catch (e) {
+      setUpdPhase('error');
+      setUpdError((e as Error).message || String(e));
+    }
+  }, []);
+
+  // 安装阶段订阅进度事件（phase 变化才订阅，避免常驻监听）
+  useEffect(() => {
+    if (updPhase !== 'installing') return;
+    let unlisten: (() => void) | null = null;
+    let cancelled = false;
+    void onUpdateProgress((p) => setUpdProgress({ downloaded: p.downloaded, total: p.total })).then(
+      (fn) => {
+        if (cancelled) fn();
+        else unlisten = fn;
+      },
+    );
+    return () => {
+      cancelled = true;
+      unlisten?.();
+    };
+  }, [updPhase]);
+
+  // 启动后静默检查一次：发现新版本只在设置页里显示，不弹窗打扰
+  const autoChecked = useRef(false);
+  const runCheckRef = useRef(runCheck);
+  useEffect(() => {
+    runCheckRef.current = runCheck;
+  }, [runCheck]);
+  useEffect(() => {
+    if (autoChecked.current || !canUpdate()) return;
+    autoChecked.current = true;
+    void getAppVersion().then(setAppVersion);
+    const timer = setTimeout(() => void runCheckRef.current(false), 5000);
+    return () => clearTimeout(timer);
+  }, []);
 
   // 每次打开时同步当前设置
   useEffect(() => {
@@ -430,6 +524,90 @@ export function SettingsDrawer({
       <p style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 6, lineHeight: 1.6 }}>
         {autoStartHint}
       </p>
+
+      <div className="set-section">关于与更新</div>
+      <div className="set-row">
+        <span className="lbl">
+          Soloup
+          <span className="sub">
+            {appVersion ? `当前版本 v${appVersion}` : '版本信息仅桌面版可见'}
+          </span>
+        </span>
+        <span className="ctl">
+          <button
+            className="btn-ghost"
+            style={{ fontSize: 11, padding: '2px 8px' }}
+            disabled={!canUpdate() || updPhase === 'checking' || updPhase === 'installing'}
+            onClick={() => void runCheck(true)}
+          >
+            {updPhase === 'checking' ? '检查中…' : '检查更新'}
+          </button>
+        </span>
+      </div>
+
+      {updPhase === 'available' && updInfo && (
+        <div className="set-row">
+          <span className="lbl">
+            发现 v{updInfo.version}
+            <span className="sub">更新会保留全部本地数据与设置</span>
+          </span>
+          <span className="ctl">
+            <button
+              className="btn-primary"
+              style={{ fontSize: 11, padding: '3px 10px' }}
+              onClick={() => void runInstall()}
+            >
+              立即更新
+            </button>
+          </span>
+        </div>
+      )}
+
+      {updPhase === 'installing' && (
+        <div style={{ margin: '8px 0 4px' }}>
+          <div
+            style={{
+              height: 4,
+              borderRadius: 2,
+              background: 'var(--bg-2, #1a1a2e)',
+              overflow: 'hidden',
+            }}
+          >
+            <div
+              style={{
+                height: '100%',
+                width:
+                  updProgress?.total && updProgress.total > 0
+                    ? `${Math.min(100, Math.round((updProgress.downloaded / updProgress.total) * 100))}%`
+                    : '25%',
+                background: 'var(--accent, #a78bfa)',
+                transition: 'width .2s linear',
+              }}
+            />
+          </div>
+          <p style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 5, lineHeight: 1.6 }}>
+            {updProgress?.total && updProgress.total > 0
+              ? `已下载 ${(updProgress.downloaded / 1048576).toFixed(1)} / ${(
+                  updProgress.total / 1048576
+                ).toFixed(1)} MB`
+              : '正在下载安装包…'}
+            <br />
+            下载完成后应用会自动关闭并重启，期间无需操作。
+          </p>
+        </div>
+      )}
+
+      {updPhase === 'latest' && (
+        <p style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 6 }}>已是最新版本。</p>
+      )}
+
+      {updPhase === 'error' && (
+        <p style={{ fontSize: 11, color: 'var(--red, #f87171)', marginTop: 6, lineHeight: 1.6 }}>
+          检查更新失败：{updError}
+          <br />
+          可以在 GitHub Releases 页面手动下载安装包。
+        </p>
+      )}
 
       <div className="set-section">外观与动效</div>
       <div className="set-row">

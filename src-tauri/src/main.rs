@@ -12,6 +12,8 @@ use tauri::{
 };
 use tauri_plugin_autostart::MacosLauncher;
 
+mod update;
+
 /// 由「开机自启动」拉起时附带的参数：只驻留托盘，不弹主窗口。
 /// 与下面 `tauri_plugin_autostart::init` 里注册的参数必须一致。
 const SILENT_FLAG: &str = "--silent";
@@ -139,6 +141,13 @@ fn main() {
                 let _ = w.set_focus();
             }
         }))
+        // 应用内更新：端点与公钥在 tauri.conf.json 的 plugins.updater 里。
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .invoke_handler(tauri::generate_handler![
+            update::update_version,
+            update::update_check,
+            update::update_install
+        ])
         .setup(|app| {
             // 开机自启拉起的实例只在托盘待命。放在 setup 最前面，尽量赶在窗口显露前隐藏。
             if std::env::args().any(|a| a == SILENT_FLAG) {
