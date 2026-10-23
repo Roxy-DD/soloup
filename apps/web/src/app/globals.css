@@ -1515,7 +1515,12 @@ li.closed .tw {
   position: absolute;
   inset: 2.4% 3.6% 7.6% 3.6%;
   border-radius: 4.5px;
-  background: radial-gradient(116% 90% at 50% 6%, var(--fld1) 0%, var(--fld2) 52%, var(--fld3) 100%);
+  background: radial-gradient(
+    116% 90% at 50% 6%,
+    var(--fld1) 0%,
+    var(--fld2) 52%,
+    var(--fld3) 100%
+  );
   overflow: hidden;
   box-shadow:
     inset 0 0 0 1px rgba(255, 255, 255, 0.46),
@@ -1618,8 +1623,7 @@ li.closed .tw {
     var(--rc5) 13.6% 17%
   );
   /* x 乘 2.6、y 乘 3.5 —— 两个不同系数自然得到斜向位移，不用写角度 */
-  background-position:
-    calc(((50% - var(--background-x)) * 2.6) + 50%)
+  background-position: calc(((50% - var(--background-x)) * 2.6) + 50%)
     calc(((50% - var(--background-y)) * 3.5) + 50%);
   background-size: 230% 230%;
   /* 亮度是倾斜角的函数：越往外越亮，像真箔把光甩出去 */
