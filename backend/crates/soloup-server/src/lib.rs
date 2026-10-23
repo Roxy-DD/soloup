@@ -872,7 +872,10 @@ pub fn dispatch(solver: &mut Solver, op: &str, args: &Value) -> Result<Value, Rp
                 .map(|a| a.id.clone())
                 .collect();
             if !fresh.is_empty() {
-                solver.store.achievements().stamp_new_unlocks(&fresh, &today)?;
+                solver
+                    .store
+                    .achievements()
+                    .stamp_new_unlocks(&fresh, &today)?;
                 // 同步内存副本，省一次全表重查
                 for a in list.iter_mut() {
                     if fresh.contains(&a.id) {
