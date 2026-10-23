@@ -1,18 +1,24 @@
 'use client';
-/* ================= 成就页：收集进度 + 卡牌墙（宝可梦式卡面 + 箔层） =================
+/* ================= 成就页：收集总览 + 卡牌墙（纸本图鉴式卡面） =================
+   设计依据：docs/card-face-design.md（对应《SOLOUP 成就卡牌视觉设计规范 v1.0》）
+   原型：.workbuddy/proto/achievements-cards-v5.html
+
    成就定义（名称 / 描述 / 稀有度 / 隐藏与前置 / 达成条件）全部来自后端 achievements 表，
    前端只保留两类展示映射：稀有度 → 工艺档、成就 id → 徽记。
-   进度文案由条件 DSL 通用生成（见 model.achProgress），不按 id 写死。
 
-   ★ 卡面结构照搬宝可梦实体卡，不是随便拍的：
-     外框（金）→ 名字带（名字 / PTS / 类型球）→ 插画窗（徽记 + 场景）→ 属性银条
-     → 条件区（进度大字 + 说明）→ 两格数据银条（进度 / 达成日）→ 页脚（ILLUS. + 稀有度符号）。
-     稀有度差的是**箔的面积**（无箔 / 仅插画窗 / 插画窗外 / 整卡换材质），不是亮度数值。
+   ★ 卡面是「档案标签」不是「游戏战利品」：
+     卡面永远纸白，稀有度只染 徽记 / 进度条 / 一枚 10px 标签，
+     不整张染色、不用彩虹箔、不用发光描边。金卡的金色面积 ≤ 卡面 8%。
 
-   ★ 一条横向基准 --px：头 / 窗 / 银条 / 条件 / 两格 / 页脚全部对齐它。
-     曾经各段各写缩进，最大差 3.4px，肉眼看就是「参差」。
-   ★ 字号只有 5 档：17 / 16 / 19 / 9.5 / 7。宝可梦真卡那排 ILLUS. 是印刷级精度，
-     缩到 1/3 就成噪点 —— 所以宁可少一件元素，不留一件看不清的。
+   ★ 一条横向基准：所有区段共用 .acard-face 的左右 padding（14px）。
+     永远不要再给单个区段单独写 left/right —— 那正是 v1.4 参差的来源。
+
+   ★ 字号只有 5 档：19 / 15 / 12 / 10.5 / 9。
+     缩到看不清的字就要删，不要留着当装饰噪点。
+
+   ★ 纵向：.acard 固定 aspect-ratio:.78，插画窗 flex:1 吸收余量（29%~40%），
+     其余区段全是 flex:none。任何区段都不要写百分比 height ——
+     卡高由宽度推出，百分比 height 的基准是父级高度，两者一混就错位。
 */
 import { useMemo, useState } from 'react';
 import type { AchStats, AchievementDef, AppState, Rarity } from '@/lib/types';
@@ -26,16 +32,16 @@ const RARITY_COLOR: Record<Rarity, string> = {
   史诗: 'var(--rsr)',
   传说: 'var(--rssr)',
 };
-/** 稀有度 → 卡面工艺档（CSS 里的 data-r） */
+/** 稀有度 → 卡面工艺档（CSS 里的 data-r）。稀有度决定主题色，状态决定内容可见性，两者独立。 */
 const RARITY_KEY: Record<Rarity, 'common' | 'rare' | 'epic' | 'legendary'> = {
   普通: 'common',
   稀有: 'rare',
   史诗: 'epic',
   传说: 'legendary',
 };
-/** 稀有度符号（页脚右端那枚） */
+/** 稀有度符号：文字标签之外的第二编码，不能只靠颜色区分 */
 const RARITY_SIGIL: Record<Rarity, string> = { 普通: '○', 稀有: '◆', 史诗: '★', 传说: '✦' };
-/** 成就类型 → 卡面类型色（后端 `type` 是英文枚举，自定义成就会落到「里程」） */
+/** 成就类型 → 卡面类型（后端 `type` 是英文枚举，自定义成就会落到「里程」） */
 const TYPE_ZH: Record<string, string> = {
   skill: '技能',
   attribute: '属性',
@@ -96,27 +102,11 @@ const sigilOf = (def: AchievementDef) =>
   SIGIL_BY_NAME[def.name] ?? SIGIL_BY_ID[def.id] ?? SIGIL_BY_TYPE[typeKey(def.type)] ?? 'star';
 /** 插画窗场景 6 种。按索引轮转而不是随机：首屏稳定，且相邻两张必不同 */
 const SCENES = ['rays', 'rings', 'wave', 'dots', 'diag', 'stars'] as const;
+const RARITY_ORDER: Rarity[] = ['普通', '稀有', '史诗', '传说'];
 
 /* ---------- 指针跟随 ----------
-   只写 CSS 变量，不做 JS 插值：变量在 CSS 里用 @property 注册成 <percentage> / <angle>，
-   transition 就能插值。省掉一条 requestAnimationFrame 循环，也不怕组件重渲染。
-   常亮基准让卡在静息态就有金属感（宝可梦卡的静息态也是亮的，不是等着被摸才亮）。 */
-const MAX_TILT = 9;
-const REST = { px: 38, py: 24 };
-const clamp = (v: number, a: number, b: number) => Math.min(b, Math.max(a, v));
-
-function applyTilt(el: HTMLElement, px: number, py: number) {
-  el.style.setProperty('--pointer-x', `${px.toFixed(1)}%`);
-  el.style.setProperty('--pointer-y', `${py.toFixed(1)}%`);
-  el.style.setProperty('--background-x', `${(37 + (px / 100) * 26).toFixed(1)}%`);
-  el.style.setProperty('--background-y', `${(33 + (py / 100) * 27).toFixed(1)}%`);
-  el.style.setProperty('--rotate-x', `${(-((px - 50) / 50) * MAX_TILT).toFixed(2)}deg`);
-  el.style.setProperty('--rotate-y', `${(((py - 50) / 50) * MAX_TILT).toFixed(2)}deg`);
-  el.style.setProperty(
-    '--pointer-from-center',
-    clamp(Math.hypot(px - 50, py - 50) / 50, 0, 1).toFixed(3),
-  );
-}
+   只写 transform，不做 JS 插值：倾角上限 4deg（手册第 8.3 节），触屏不绑。 */
+const MAX_TILT = 4;
 
 export function AchievementsTab({ state }: { state: AppState }) {
   const stats = useMemo(() => deriveStats(state), [state]);
@@ -139,33 +129,27 @@ export function AchievementsTab({ state }: { state: AppState }) {
       <div className="section-title" style={{ marginTop: 4 }}>
         <h2>成就卡册</h2>
       </div>
-      <div className="card" style={{ marginBottom: 18 }}>
-        <div className="coll-head">
+
+      {/* 总览：像卡册的目录页 —— 左计数 / 中分段条 / 右百分比 / 下分档明细 */}
+      <div className="coll">
+        <div className="coll-top">
           <div className="coll-num">
             {unlockedCount}
             <small> / {total}</small>
           </div>
-          <div className="coll-bar">
-            {(['普通', '稀有', '史诗', '传说'] as Rarity[]).map((r) => {
+          <div className="coll-seg">
+            {RARITY_ORDER.map((r) => {
               const { all, got } = byRarity(r);
               const w = total > 0 ? (all / total) * 100 : 0;
               return (
-                <i
-                  key={r}
-                  style={{ width: `${w}%`, background: RARITY_COLOR[r], position: 'relative' }}
-                >
-                  {got > 0 && all > 0 && (
-                    <i
-                      style={{
-                        position: 'absolute',
-                        inset: 0,
-                        width: `${(got / all) * 100}%`,
-                        background: RARITY_COLOR[r],
-                        borderRight: '2px solid var(--card)',
-                      }}
-                    />
-                  )}
-                </i>
+                <div className="coll-track" key={r} style={{ width: `${w}%` }}>
+                  <i
+                    style={{
+                      width: all > 0 ? `${(got / all) * 100}%` : 0,
+                      background: RARITY_COLOR[r],
+                    }}
+                  />
+                </div>
               );
             })}
           </div>
@@ -174,12 +158,12 @@ export function AchievementsTab({ state }: { state: AppState }) {
           </div>
         </div>
         <div className="coll-legend">
-          {(['普通', '稀有', '史诗', '传说'] as Rarity[]).map((r) => {
+          {RARITY_ORDER.map((r) => {
             const { all, got } = byRarity(r);
             return (
               <span key={r}>
                 <i style={{ background: RARITY_COLOR[r] }} />
-                {RARITY_CODE[r]} {r} ×{got}/{all}
+                {RARITY_CODE[r]} {r} <b>{got}</b>/{all}
               </span>
             );
           })}
@@ -225,9 +209,7 @@ function Acard({
 
   const depsMet = def.requires.length === 0 || def.requires.every((id) => !!unlockedMap[id]);
   const prog = achProgress(stats, def.condition);
-  const ratio = prog?.ratio ?? 0;
-  /** 进度条至少留 2%：0% 会让槽看起来是空的，读作「没有进度」而不是「刚开始」 */
-  const pct = Math.max(2, Math.round(ratio * 100));
+  const truePct = prog ? Math.round(prog.ratio * 100) : 0;
 
   // 隐藏成就的三段式揭示：完全遮住 → 只露名字 → 全露
   let showName: boolean;
@@ -259,6 +241,17 @@ function Acard({
     showDesc = true;
   }
 
+  /** 名字都没露出来的卡，进度、日期、百分比一律不给 —— 遮一半比不遮更漏 */
+  const masked = !showName;
+  /** 进度条至少留 2%：0% 会让槽看起来是空的，读作「没有进度」而不是「刚开始」。
+   *  但底部那个数字只报真实值 —— 辅助文本不许谎报进度。 */
+  const barPct = masked || !prog ? 0 : Math.max(2, truePct);
+  const pctText = masked || !prog ? '—' : `${truePct}%`;
+  /** 条件进度原文（"已记录 14 / 1 天" 这类）。它有 10~18 个字，塞不进进度条右端那种位置，
+   *  所以放在描述下面一行；条右端只放百分比。 */
+  const progText = masked || !prog ? '' : prog.text;
+  const dateText = unlocked ? (date ?? '—') : '—';
+  // 深锁（前置没点亮）与「隐藏但前置已满足」是两种不同的少话程度，别用同一句占位
   const descText = showDesc
     ? def.desc
     : showName
@@ -266,16 +259,18 @@ function Acard({
       : deepLocked
         ? '与某张卡牌存在关联…'
         : '达成后揭晓';
+  const stateText = unlocked ? '已达成' : masked ? '未揭示' : '进行中';
+  const backCond = deepLocked ? '前置成就尚未点亮' : masked ? '尚未解锁，内容暂不揭示' : def.desc;
 
   return (
     <div className="acard-stage">
       <div
-        className={`acard${flip ? ' flip' : ''}${unlocked ? '' : ' locked'}${
-          showName ? '' : ' masked'
-        }${deepLocked ? ' deep' : ''}`}
+        className={`acard${flip ? ' flip' : ''}${unlocked ? '' : ' is-locked'}${
+          masked ? ' is-masked' : ''
+        }`}
         data-r={RARITY_KEY[def.rarity]}
-        data-t={typeKey(def.type)}
         data-sc={SCENES[index % SCENES.length]}
+        data-state={stateText === '已达成' ? 'unlocked' : masked ? 'hidden' : 'progress'}
         onClick={() => setFlip((f) => !f)}
         onKeyDown={(e) => {
           if (e.key === 'Enter' || e.key === ' ') {
@@ -284,99 +279,105 @@ function Acard({
           }
         }}
         onPointerMove={(e) => {
+          if (!window.matchMedia('(hover: hover) and (pointer: fine)').matches) return;
           const el = e.currentTarget;
           const r = el.getBoundingClientRect();
           if (!r.width || !r.height) return;
-          applyTilt(
-            el,
-            clamp(((e.clientX - r.left) / r.width) * 100, 0, 100),
-            clamp(((e.clientY - r.top) / r.height) * 100, 0, 100),
-          );
+          const rx = ((e.clientY - r.top) / r.height - 0.5) * -MAX_TILT;
+          const ry = ((e.clientX - r.left) / r.width - 0.5) * MAX_TILT;
+          // 抬升写在这里而不是 CSS：.acard 的 transform 已被倾斜占用，两处写必互相覆盖
+          el.style.transform = `perspective(1200px) translateY(-2px) rotateX(${rx.toFixed(
+            2,
+          )}deg) rotateY(${ry.toFixed(2)}deg)`;
         }}
-        onPointerLeave={(e) => applyTilt(e.currentTarget, REST.px, REST.py)}
+        onPointerLeave={(e) => {
+          e.currentTarget.style.transform = '';
+        }}
         role="button"
         tabIndex={0}
-        aria-label={`成就卡牌：${showName ? def.name : '未揭示'}，${def.rarity}`}
+        aria-label={`成就卡牌：${showName ? def.name : '未揭示'}，${def.rarity}，${
+          unlocked ? '已解锁' : '未解锁'
+        }`}
         aria-pressed={flip}
       >
-        <div className="acard-inner">
+        <div className="acard-3d">
           <div className="acard-face front">
-            <div className="acard-field">
-              <div className="acard-gold" />
-              <div className="acard-shine" />
-              <div className="acard-art" />
-              <div className="acard-glare" />
-              <div className="zone-emb">
-                <AchIcon name={sigilOf(def)} />
-              </div>
+            <div className="af-meta">
+              <span className="af-no">NO.{String(no).padStart(3, '0')}</span>
+              <span className="af-sep" />
+              <span>{TYPE_ZH[typeKey(def.type)]}</span>
+              <span className="af-tag">
+                <s>{RARITY_SIGIL[def.rarity]}</s>
+                {def.rarity}
+              </span>
+            </div>
 
-              <div className="zone-head">
-                <div className="acard-nm">{showName ? def.name : '？？？'}</div>
-                <div className="acard-pts">
-                  <s>PTS</s>
-                  <b>{def.points}</b>
-                </div>
-                <i className="acard-orb" />
-              </div>
-
-              <div className="zone-band acard-silver">
-                <span>
-                  NO.<b>{String(no).padStart(3, '0')}</b>
-                </span>
-                <span>{TYPE_ZH[typeKey(def.type)]}</span>
-                <span className="acard-rar">{def.rarity}</span>
-              </div>
-
-              <div className="zone-cond">
-                <div className="acard-big">{showDesc && prog ? prog.text : '???'}</div>
-                <div className="acard-text">{descText}</div>
-              </div>
-
-              <div className="zone-wrr acard-silver">
-                <div className="acell">
-                  <span className="acell-label">进度</span>
-                  <span className="acell-val">{prog ? `${pct}%` : '—'}</span>
-                </div>
-                <div className="acell">
-                  <span className="acell-label">达成日</span>
-                  <span className="acell-val">{unlocked ? (date ?? '—') : '—'}</span>
-                </div>
+            <div className="af-title">
+              <div className="af-name">{showName ? def.name : '？？？'}</div>
+              <div className="af-pts">
+                PTS<b>{def.points}</b>
               </div>
             </div>
 
-            <div className="zone-foot">
-              <span className="acard-fnote">ILLUS.&nbsp;SOLOUP</span>
-              <span className="acard-glyph">{RARITY_SIGIL[def.rarity]}</span>
+            <div className="af-art">
+              <AchIcon name={masked ? 'seal' : sigilOf(def)} />
+            </div>
+
+            <div className="af-cond">
+              <div className="af-main">{descText}</div>
+              <div className="af-sub">{progText || '—'}</div>
+            </div>
+
+            <div className="af-bar">
+              <div className="af-track">
+                <i className="af-fill" style={{ width: `${barPct}%` }} />
+              </div>
+              <div className="af-ratio">{pctText}</div>
+            </div>
+
+            <div className="af-data">
+              <span>{stateText}</span>
+              <span>{dateText}</span>
+            </div>
+
+            <div className="af-foot">
+              <span>SOLOUP</span>
+              <span className="af-glyph">{RARITY_SIGIL[def.rarity]}</span>
             </div>
           </div>
 
+          {/* 背面：档案卡式数据表。手册第 5.6 节要求「不能只放一个大星号和大片空白」 */}
           <div className="acard-face back">
-            <div className="acard-backmark">{unlocked ? '★' : deepLocked ? '⚿' : '？'}</div>
-            <div className="acard-btxt">
-              {unlocked ? (
-                <>
-                  <b>已经拿到</b>
-                  <br />
-                  {def.desc}
-                </>
-              ) : deepLocked ? (
-                <>前置成就还没点亮，这张卡暂时看不见内容</>
-              ) : (
-                <>
-                  {prog ? prog.text : '条件尚未达成'}
-                  <br />
-                  <span style={{ opacity: 0.65 }}>还差一点</span>
-                </>
-              )}
+            <div className="ab-top">
+              <i />
+              {RARITY_SIGIL[def.rarity]} {def.rarity} · NO.{String(no).padStart(3, '0')}
             </div>
-            {unlocked ? (
-              date && <div className="acard-bdate">{date}</div>
-            ) : (
-              <div className="acard-bplit">
-                <i style={{ width: `${pct}%` }} />
+            <div className="ab-name">{showName ? def.name : '？？？'}</div>
+            <div className="ab-rule" />
+            <div className="ab-rows">
+              <div className="ab-row">
+                <span>状态</span>
+                <b>{stateText}</b>
               </div>
-            )}
-            <div className="acard-bmark">{unlocked ? 'ACHIEVED' : 'LOCKED'}</div>
+              <div className="ab-row">
+                <span>条件</span>
+                <b className="mut">{backCond}</b>
+              </div>
+              <div className="ab-row">
+                <span>进度</span>
+                <b>{masked || !prog ? '—' : prog.text}</b>
+              </div>
+              <div className="ab-row">
+                <span>达成</span>
+                <b className="mut">{dateText}</b>
+              </div>
+            </div>
+            <div className="ab-bottom">
+              <div className="ab-track">
+                <i className="ab-fill" style={{ width: `${barPct}%` }} />
+              </div>
+              <div className="ab-mark">SOLOUP · ACHIEVEMENT</div>
+            </div>
           </div>
         </div>
       </div>

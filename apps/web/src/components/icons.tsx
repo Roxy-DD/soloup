@@ -38,10 +38,9 @@ export function GearIcon() {
 
 /** 成就卡徽记（描边式）。
  *
- *  与旧版填充式图标的区别不是风格偏好，而是**用法**：徽记现在压在插画窗的
- *  渐变场景上，填充色块会把底纹整块盖掉，描边才能让场景透过去。
- *  统一 24×24、无填充、线宽由 CSS 给（`.zone-emb svg{stroke-width}`），
- *  这样金卡能单独调线宽与描边色，不必换一套图。
+ *  统一 24×24、无填充、线宽与描边色全部由 CSS 给。
+ *  ⚠️ 线宽必须写成**用户单位**（约 0.42），不是 1.7 —— 徽记会被放大到 100px 上下，
+ *  1.7 单位在 24 的坐标系里等于 7px 粗的描边，看起来像实心色块（v5 第一版就栽在这）。
  */
 export const ACH_SIGILS: Record<string, ReactNode> = {
   spark: (
@@ -193,6 +192,14 @@ export const ACH_SIGILS: Record<string, ReactNode> = {
       <circle cx="5.6" cy="18" r="1.9" />
       <circle cx="12" cy="12" r="2.3" />
       <circle cx="18.4" cy="6" r="2.7" />
+    </>
+  ),
+  /* 深锁态专用：封存印（不是锁头，锁头会把「待完成」读成「坏了」） */
+  seal: (
+    <>
+      <circle cx="12" cy="12" r="8.6" />
+      <circle cx="12" cy="12" r="4.4" strokeDasharray="1.6 3.2" />
+      <circle cx="12" cy="12" r="1.2" />
     </>
   ),
   /* 未登记的成就（用户自定义的）走这颗星，保证任何 id 都画得出来 */
