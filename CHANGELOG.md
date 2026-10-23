@@ -1,5 +1,12 @@
 # 变更记录
 
+## [1.3.1] - 2026-10-23
+
+### 修复
+
+- 修复 GitHub Actions 在 Linux/Windows 不同换行符环境下误报 Prettier 格式检查失败；统一 Prettier 和 Git 文本行尾为 LF
+
+
 本文件记录 Soloup 的重要变更。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
