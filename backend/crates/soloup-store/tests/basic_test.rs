@@ -1,9 +1,9 @@
 //! store 层冒烟：内存库打开 + 迁移 + Attribute/Settings/Audit CRUD。
 
+use serde_json::json;
 use soloup_core::schema::Attribute;
 use soloup_store::open_store;
 use soloup_store::OpenStoreOptions;
-use serde_json::json;
 
 fn mem_store() -> soloup_store::Store {
     open_store(OpenStoreOptions {
@@ -39,6 +39,36 @@ fn migrate_sets_schema_version() {
 }
 
 #[test]
+fn skill_achievement_migration_uses_observable_counts_and_preserves_custom_rules() {
+    let s = mem_store();
+    let custom_condition = json!({"stat":"totalDays","operator":">=","value":17});
+    s.conn
+        .execute(
+            "UPDATE achievements SET condition_json=?1, name='自定义宗师' WHERE id='grand'",
+            [custom_condition.to_string()],
+        )
+        .unwrap();
+    s.conn.execute(
+        "INSERT INTO achievements (id,name,condition_json,type,rarity) VALUES ('custom','我的成就','{}','milestone','common')",
+        [],
+    ).unwrap();
+
+    s.conn
+        .execute_batch(soloup_store::migrations::V6_OBSERVABLE_SKILL_ACHIEVEMENTS.sql)
+        .unwrap();
+
+    let dawn = s.achievements().get("dawn").unwrap().unwrap();
+    assert_eq!(
+        dawn.condition_json,
+        Some(json!({"stat":"maxSkillCheckins","operator":">=","value":7}))
+    );
+    let grand = s.achievements().get("grand").unwrap().unwrap();
+    assert_eq!(grand.name, "自定义宗师");
+    assert_eq!(grand.condition_json, Some(custom_condition));
+    assert!(s.achievements().get("custom").unwrap().is_some());
+}
+
+#[test]
 fn attribute_crud_roundtrip() {
     let s = mem_store();
     let repo = s.attributes();
@@ -48,7 +78,10 @@ fn attribute_crud_roundtrip() {
 
     let got = repo.get(&id).unwrap().expect("should exist");
     assert_eq!(got.name, "体质");
-    assert_eq!(got.category, Some(soloup_core::schema::AttributeCategory::Physical));
+    assert_eq!(
+        got.category,
+        Some(soloup_core::schema::AttributeCategory::Physical)
+    );
 
     let mut updated = got.clone();
     updated.name = "力量".to_string();
@@ -70,7 +103,10 @@ fn settings_json_roundtrip() {
         .unwrap();
     let v: serde_json::Value = repo.get_json("param_overrides").unwrap().unwrap();
     assert_eq!(v["attr_defaults"]["alpha"], 1.3);
-    assert!(repo.get_json::<serde_json::Value>("missing").unwrap().is_none());
+    assert!(repo
+        .get_json::<serde_json::Value>("missing")
+        .unwrap()
+        .is_none());
 }
 
 #[test]
@@ -83,7 +119,8 @@ fn audit_append_and_list() {
         Some(&json!({"name": "体质"})),
     )
     .unwrap();
-    repo.append(soloup_core::schema::AuditActor::User, None, None).unwrap();
+    repo.append(soloup_core::schema::AuditActor::User, None, None)
+        .unwrap();
 
     let all = repo.list(&Default::default()).unwrap();
     assert_eq!(all.len(), 2);

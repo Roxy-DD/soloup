@@ -66,10 +66,14 @@ pub fn level_of(e: f64, curve: &ResolvedCurve) -> f64 {
         return 0.0;
     }
     match curve.r#type {
-        CurveType::Saturated => saturated_level(e, curve.lambda.unwrap_or(SATURATED_DEFAULT_LAMBDA)),
+        CurveType::Saturated => {
+            saturated_level(e, curve.lambda.unwrap_or(SATURATED_DEFAULT_LAMBDA))
+        }
         CurveType::Sigmoid => sigmoid_level(
             e,
-            curve.k.unwrap_or_else(|| sigmoid_default_params(SkillCategory::Cognitive).k),
+            curve
+                .k
+                .unwrap_or_else(|| sigmoid_default_params(SkillCategory::Cognitive).k),
             curve.x0.unwrap_or(0.0),
         ),
     }
@@ -88,9 +92,13 @@ pub fn level_from_category(
 /// 半程点 E₅₀（达到 50 级所需 E）。
 pub fn half_way_point(curve: &ResolvedCurve) -> f64 {
     match curve.r#type {
-        CurveType::Saturated => curve.lambda.unwrap_or(SATURATED_DEFAULT_LAMBDA) * std::f64::consts::LN_2,
+        CurveType::Saturated => {
+            curve.lambda.unwrap_or(SATURATED_DEFAULT_LAMBDA) * std::f64::consts::LN_2
+        }
         CurveType::Sigmoid => {
-            let k = curve.k.unwrap_or_else(|| sigmoid_default_params(SkillCategory::Cognitive).k);
+            let k = curve
+                .k
+                .unwrap_or_else(|| sigmoid_default_params(SkillCategory::Cognitive).k);
             let x0 = curve.x0.unwrap_or(0.0);
             let s0 = sigma(-k * x0);
             x0 + (1.0 / k) * ((1.0 + s0) / (1.0 - s0)).ln()

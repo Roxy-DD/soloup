@@ -35,7 +35,12 @@ pub fn today_iso() -> IsoDate {
 }
 
 pub fn to_iso_date(date: NaiveDate) -> IsoDate {
-    format!("{}-{}-{}", date.year(), pad2(date.month()), pad2(date.day()))
+    format!(
+        "{}-{}-{}",
+        date.year(),
+        pad2(date.month()),
+        pad2(date.day())
+    )
 }
 
 /// 加 n 天（n 可为负）。输入非法则 panic（防呆，§3.5）。

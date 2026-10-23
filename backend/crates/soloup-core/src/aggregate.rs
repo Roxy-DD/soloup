@@ -10,7 +10,7 @@ pub struct WeightedLevel {
 /// §3.8 父级 level：ℓ_parent = (Σ wᵢ·ℓᵢ^α / Σ wᵢ)^(1/α)。Σw ≤ 0 返回 0。
 pub fn parent_level(children: &[WeightedLevel], alpha: f64) -> f64 {
     let sum_w: f64 = children.iter().map(|c| c.weight).sum();
-    if !(sum_w > 0.0) {
+    if sum_w.partial_cmp(&0.0) != Some(std::cmp::Ordering::Greater) {
         return 0.0;
     }
     let sum_wl: f64 = children
@@ -39,7 +39,7 @@ pub fn attribute_value(p: &AttributeParams, entries: &[WeightedLevel]) -> f64 {
         .iter()
         .map(|e| e.weight * e.level.powf(p.alpha))
         .sum();
-    if !(x > 0.0) {
+    if x.partial_cmp(&0.0) != Some(std::cmp::Ordering::Greater) {
         return p.base_value;
     }
     p.base_value + p.max_value * (1.0 - (-x / p.w0).exp())
@@ -52,7 +52,9 @@ pub fn attribute_ceiling(p: &AttributeParams) -> f64 {
 
 /// §3.4 V 的稳态值 V_eq = (1−d)/d。
 pub fn steady_state_v(d: f64) -> f64 {
-    if !(d > 0.0) || !(d < 1.0) {
+    if d.partial_cmp(&0.0) != Some(std::cmp::Ordering::Greater)
+        || d.partial_cmp(&1.0) != Some(std::cmp::Ordering::Less)
+    {
         panic!("steadyStateV: d 须在 (0,1)，收到 {d}");
     }
     (1.0 - d) / d
@@ -65,7 +67,9 @@ pub fn steady_day_gain(c: f64, d: f64) -> f64 {
 
 /// §3.4 活性半衰期 t½ = ln2 / −ln(1−d)。
 pub fn active_half_life_days(d: f64) -> f64 {
-    if !(d > 0.0) || !(d < 1.0) {
+    if d.partial_cmp(&0.0) != Some(std::cmp::Ordering::Greater)
+        || d.partial_cmp(&1.0) != Some(std::cmp::Ordering::Less)
+    {
         panic!("activeHalfLifeDays: d 须在 (0,1)，收到 {d}");
     }
     std::f64::consts::LN_2 / -(1.0 - d).ln()

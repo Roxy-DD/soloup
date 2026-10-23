@@ -38,7 +38,8 @@ impl ResetRepo<'_> {
                 };
                 for k in keys {
                     if !keep_settings.contains(&k.as_str()) {
-                        self.db.execute("DELETE FROM settings WHERE key = ?1", params![k])?;
+                        self.db
+                            .execute("DELETE FROM settings WHERE key = ?1", params![k])?;
                     }
                 }
             }

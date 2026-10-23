@@ -39,7 +39,11 @@ impl DailyRepo<'_> {
     }
 
     /// [from, to] 闭区间（任一 None=不设界）；按日期升序。
-    pub fn list_records(&self, from: Option<&str>, to: Option<&str>) -> Result<Vec<DailyRecord>, StoreError> {
+    pub fn list_records(
+        &self,
+        from: Option<&str>,
+        to: Option<&str>,
+    ) -> Result<Vec<DailyRecord>, StoreError> {
         let mut stmt = self.db.prepare(
             "SELECT date, project_id, note, settled FROM daily_records
              WHERE (?1 IS NULL OR date >= ?1) AND (?2 IS NULL OR date <= ?2) ORDER BY date ASC",
@@ -49,9 +53,9 @@ impl DailyRepo<'_> {
     }
 
     pub fn skill_ids_on(&self, date: &str) -> Result<Vec<String>, StoreError> {
-        let mut stmt = self.db.prepare(
-            "SELECT skill_id FROM daily_record_skills WHERE date = ?1 ORDER BY rowid",
-        )?;
+        let mut stmt = self
+            .db
+            .prepare("SELECT skill_id FROM daily_record_skills WHERE date = ?1 ORDER BY rowid")?;
         let rows = stmt.query_map(params![date], |r| r.get::<_, String>(0))?;
         Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
     }
@@ -83,7 +87,9 @@ impl DailyRepo<'_> {
             if seen.insert(id.clone()) {
                 let exists: Option<i64> = self
                     .db
-                    .query_row("SELECT 1 FROM skills WHERE id = ?1", params![id], |r| r.get(0))
+                    .query_row("SELECT 1 FROM skills WHERE id = ?1", params![id], |r| {
+                        r.get(0)
+                    })
                     .optional()?;
                 if exists.is_none() {
                     return Err(StoreError::not_found(format!("技能不存在：{id}")));
@@ -96,8 +102,10 @@ impl DailyRepo<'_> {
              ON CONFLICT(date) DO UPDATE SET project_id = excluded.project_id, note = excluded.note",
             params![date, input.project_id, input.note],
         )?;
-        self.db
-            .execute("DELETE FROM daily_record_skills WHERE date = ?1", params![date])?;
+        self.db.execute(
+            "DELETE FROM daily_record_skills WHERE date = ?1",
+            params![date],
+        )?;
         for id in &skill_ids {
             self.db.execute(
                 "INSERT INTO daily_record_skills (date, skill_id) VALUES (?1, ?2)",

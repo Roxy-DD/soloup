@@ -85,7 +85,8 @@ impl ProjectRepo<'_> {
     }
 
     pub fn delete(&self, id: &str) -> Result<(), StoreError> {
-        self.db.execute("DELETE FROM projects WHERE id = ?1", params![id])?;
+        self.db
+            .execute("DELETE FROM projects WHERE id = ?1", params![id])?;
         Ok(())
     }
 }

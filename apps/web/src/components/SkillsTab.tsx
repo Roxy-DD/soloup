@@ -233,11 +233,10 @@ export function SkillsTab({
 
       <div className="skill-grid">
         <div className="mini-card">
-          <h4>熟练度公式</h4>
-          <div className="bd" style={{ fontFamily: 'monospace', fontSize: 13, marginBottom: 6 }}>
-            LV = 4·ln(1 + 使用次数 / 2)⌋
+          <h4>进度数值说明</h4>
+          <div className="bd">
+            等级由后端根据打卡记录计算，属于游戏化反馈；目前没有用技能表现测评数据校准，不能代表真实能力。
           </div>
-          <div className="bd">见习Ⅰ 1–4 · 熟练Ⅱ 5–9 · 精通 10–14 · 大师Ⅳ 15–19 · 宗师Ⅴ 20+</div>
         </div>
         <div className="mini-card">
           <h4>关联规则</h4>

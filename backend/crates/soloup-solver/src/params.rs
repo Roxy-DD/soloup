@@ -18,7 +18,10 @@ pub struct EffectiveSkillParams {
 }
 
 /// §2.9 类别账户参数 + 覆盖（category.<c>.c/f）。
-pub fn account_params_for(category: SkillCategory, overrides: &ParamOverrides) -> EffectiveAccounts {
+pub fn account_params_for(
+    category: SkillCategory,
+    overrides: &ParamOverrides,
+) -> EffectiveAccounts {
     let (base_c, base_f) = category_account_params(category);
     let o = overrides.category.as_ref().and_then(|m| m.get(&category));
     EffectiveAccounts {
@@ -54,13 +57,15 @@ pub fn curve_params_for(
 }
 
 /// 技能行 → 结算用生效参数（账户 + 等级曲线）。
-pub fn effective_skill_params(
-    skill: &Skill,
-    overrides: &ParamOverrides,
-) -> EffectiveSkillParams {
+pub fn effective_skill_params(skill: &Skill, overrides: &ParamOverrides) -> EffectiveSkillParams {
     EffectiveSkillParams {
         accounts: account_params_for(skill.category, overrides),
-        curve: curve_params_for(skill.category, skill.difficulty, skill.curve_type, overrides),
+        curve: curve_params_for(
+            skill.category,
+            skill.difficulty,
+            skill.curve_type,
+            overrides,
+        ),
     }
 }
 
@@ -172,16 +177,15 @@ pub fn has_param_diff(change: &SkillParamChange) -> bool {
 }
 
 /// 从审计中取某技能的参数变更（tool='skill.update' 且带 skill_id/effective_at/changed）。
-pub fn collect_profile_changes(
-    audits: &[AuditLog],
-    skill_id: &str,
-) -> Vec<SkillParamChange> {
+pub fn collect_profile_changes(audits: &[AuditLog], skill_id: &str) -> Vec<SkillParamChange> {
     let mut out: Vec<SkillParamChange> = Vec::new();
     for entry in audits {
         if entry.tool.as_deref() != Some("skill.update") {
             continue;
         }
-        let Some(raw) = entry.params_json.as_ref() else { continue };
+        let Some(raw) = entry.params_json.as_ref() else {
+            continue;
+        };
         let Some(p) = raw.as_object() else { continue };
         if p.get("skill_id").and_then(|v| v.as_str()) != Some(skill_id) {
             continue;
@@ -189,7 +193,9 @@ pub fn collect_profile_changes(
         let Some(effective_at) = p.get("effective_at").and_then(|v| v.as_str()) else {
             continue;
         };
-        let Some(changed) = p.get("changed").and_then(|v| v.as_object()) else { continue };
+        let Some(changed) = p.get("changed").and_then(|v| v.as_object()) else {
+            continue;
+        };
         let mut change = SkillParamChange {
             effective_at: effective_at.to_string(),
             category: None,
@@ -198,8 +204,14 @@ pub fn collect_profile_changes(
         };
         let mut any = false;
         if let Some(c) = changed.get("category") {
-            let old = c.get("old").and_then(|v| v.as_str()).and_then(SkillCategory::parse);
-            let new = c.get("new").and_then(|v| v.as_str()).and_then(SkillCategory::parse);
+            let old = c
+                .get("old")
+                .and_then(|v| v.as_str())
+                .and_then(SkillCategory::parse);
+            let new = c
+                .get("new")
+                .and_then(|v| v.as_str())
+                .and_then(SkillCategory::parse);
             if let (Some(o), Some(n)) = (old, new) {
                 if o != n {
                     change.category = Some((o, n));
@@ -208,8 +220,14 @@ pub fn collect_profile_changes(
             }
         }
         if let Some(c) = changed.get("difficulty") {
-            let old = c.get("old").and_then(|v| v.as_str()).and_then(Difficulty::parse);
-            let new = c.get("new").and_then(|v| v.as_str()).and_then(Difficulty::parse);
+            let old = c
+                .get("old")
+                .and_then(|v| v.as_str())
+                .and_then(Difficulty::parse);
+            let new = c
+                .get("new")
+                .and_then(|v| v.as_str())
+                .and_then(Difficulty::parse);
             if let (Some(o), Some(n)) = (old, new) {
                 if o != n {
                     change.difficulty = Some((o, n));
@@ -218,8 +236,14 @@ pub fn collect_profile_changes(
             }
         }
         if let Some(c) = changed.get("curve_type") {
-            let old = c.get("old").and_then(|v| v.as_str()).and_then(CurveType::parse);
-            let new = c.get("new").and_then(|v| v.as_str()).and_then(CurveType::parse);
+            let old = c
+                .get("old")
+                .and_then(|v| v.as_str())
+                .and_then(CurveType::parse);
+            let new = c
+                .get("new")
+                .and_then(|v| v.as_str())
+                .and_then(CurveType::parse);
             if old != new {
                 change.curve_type = Some((old, new));
                 any = true;

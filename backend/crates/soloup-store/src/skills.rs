@@ -22,9 +22,7 @@ fn from_row(row: &Row) -> rusqlite::Result<Skill> {
         parent_id: row.get(3)?,
         category: SkillCategory::parse(&category).unwrap_or(SkillCategory::Knowledge),
         difficulty: Difficulty::parse(&difficulty).unwrap_or(Difficulty::Normal),
-        curve_type: curve_type
-            .as_deref()
-            .and_then(CurveType::parse),
+        curve_type: curve_type.as_deref().and_then(CurveType::parse),
         c: row.get(7)?,
         v: row.get(8)?,
         last_settled_date: row.get(9)?,
@@ -140,7 +138,10 @@ impl SkillRepo<'_> {
                 if desc.contains(new_parent) {
                     return Err(StoreError::constraint(
                         StoreErrorCode::Cycle,
-                        format!("父级移动被拒：{new_parent} 位于 {} 的子树内，移动将形成环", s.id),
+                        format!(
+                            "父级移动被拒：{new_parent} 位于 {} 的子树内，移动将形成环",
+                            s.id
+                        ),
                     ));
                 }
             }
@@ -177,8 +178,10 @@ impl SkillRepo<'_> {
             return Ok(existing);
         }
         let archived_at = date.unwrap_or(&today_iso()).to_string();
-        self.db
-            .execute("UPDATE skills SET archived_at = ?2 WHERE id = ?1", params![id, archived_at])?;
+        self.db.execute(
+            "UPDATE skills SET archived_at = ?2 WHERE id = ?1",
+            params![id, archived_at],
+        )?;
         let mut s = existing;
         s.archived_at = Some(archived_at);
         Ok(s)
@@ -189,8 +192,10 @@ impl SkillRepo<'_> {
         if existing.archived_at.is_none() {
             return Ok(existing);
         }
-        self.db
-            .execute("UPDATE skills SET archived_at = NULL WHERE id = ?1", params![id])?;
+        self.db.execute(
+            "UPDATE skills SET archived_at = NULL WHERE id = ?1",
+            params![id],
+        )?;
         let mut s = existing;
         s.archived_at = None;
         Ok(s)
@@ -223,7 +228,10 @@ impl SkillRepo<'_> {
         if desc.len() > 1 {
             return Err(StoreError::constraint(
                 StoreErrorCode::HasChildren,
-                format!("技能 {id} 仍有 {} 个子技能，不能删除（可先归档）", desc.len() - 1),
+                format!(
+                    "技能 {id} 仍有 {} 个子技能，不能删除（可先归档）",
+                    desc.len() - 1
+                ),
             ));
         }
         let history: i64 = self.db.query_row(
@@ -237,12 +245,14 @@ impl SkillRepo<'_> {
                 format!("技能 {id} 已有 {history} 条打卡历史，不能物理删除，请先归档"),
             ));
         }
-        self.db.execute("DELETE FROM skills WHERE id = ?1", params![id])?;
+        self.db
+            .execute("DELETE FROM skills WHERE id = ?1", params![id])?;
         Ok(())
     }
 
     pub fn children_of(&self, id: &str) -> Result<Vec<Skill>, StoreError> {
-        let sql = format!("SELECT {COLS} FROM skills WHERE parent_id = ?1 ORDER BY sort ASC, name ASC");
+        let sql =
+            format!("SELECT {COLS} FROM skills WHERE parent_id = ?1 ORDER BY sort ASC, name ASC");
         let mut stmt = self.db.prepare(&sql)?;
         let rows = stmt.query_map(params![id], from_row)?;
         Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)

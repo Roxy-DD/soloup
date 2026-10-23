@@ -74,7 +74,7 @@ export function CheckinTab({
       dispatch({ type: 'SAVE_RECORD', date: today, skillIds: [...selected] });
       setSaving(false);
       setEditing(false);
-      toast(`已点亮 ${litAttrs.length} 项属性 · ${selected.size} 项技能熟练度 +1`);
+      toast(`已点亮 ${litAttrs.length} 项属性 · 已记录 ${selected.size} 项技能练习`);
     }, 700);
   };
 

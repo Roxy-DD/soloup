@@ -170,12 +170,34 @@ UPDATE achievements SET hidden = 0, requires_json = '["d100"]',         reveal_a
 "#,
 };
 
+/// 内置技能成就改用真实可观测的按技能打卡天数，不再把未经验证的等级曲线当作能力测量。
+/// 兼容升级已有数据库；仅更新内置成就定义，不修改用户自定义成就及打卡数据。
+pub const V6_OBSERVABLE_SKILL_ACHIEVEMENTS: Migration = Migration {
+    version: 6,
+    label: "技能成就改用可观测的练习记录里程碑",
+    sql: r#"
+UPDATE achievements SET
+  description=CASE WHEN description='任一技能达到 4 级' THEN '任一技能累计记录 7 天' ELSE description END,
+  condition_json='{"stat":"maxSkillCheckins","operator":">=","value":7}'
+  WHERE id='dawn' AND condition_json='{"stat":"maxSkillLv","operator":">=","value":4}';
+UPDATE achievements SET name=CASE WHEN name='宗师之路' THEN '百日专注' ELSE name END,
+  description=CASE WHEN description='任一技能达到 20 级' THEN '任一技能累计记录 100 天' ELSE description END,
+  condition_json='{"stat":"maxSkillCheckins","operator":">=","value":100}'
+  WHERE id='grand' AND condition_json='{"stat":"maxSkillLv","operator":">=","value":20}';
+UPDATE achievements SET name=CASE WHEN name='万时之功' THEN '年度深耕' ELSE name END,
+  description=CASE WHEN description='某个技能累计打卡 10,000 天' THEN '任一技能累计记录 365 天' ELSE description END,
+  condition_json='{"stat":"maxSkillCheckins","operator":">=","value":365}'
+  WHERE id='tenk' AND condition_json='{"stat":"maxSkillCheckins","operator":">=","value":10000}';
+"#,
+};
+
 pub const MIGRATIONS: &[Migration] = &[
     V1_INIT,
     V2_ACHIEVEMENT_REVEAL,
     V3_SKILL_IS_BRANCH,
     V4_ACHIEVEMENT_CONDITIONS,
     V5_ACHIEVEMENT_REVEAL_FIELDS,
+    V6_OBSERVABLE_SKILL_ACHIEVEMENTS,
 ];
 
 pub fn latest_schema_version() -> i64 {

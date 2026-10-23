@@ -34,7 +34,10 @@ impl LinkRepo<'_> {
         Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
     }
 
-    pub fn list_for_attribute(&self, attribute_id: &str) -> Result<Vec<SkillAttributeLink>, StoreError> {
+    pub fn list_for_attribute(
+        &self,
+        attribute_id: &str,
+    ) -> Result<Vec<SkillAttributeLink>, StoreError> {
         let mut stmt = self.db.prepare(
             "SELECT skill_id, attribute_id, weight FROM skill_attributes WHERE attribute_id = ?1 ORDER BY skill_id",
         )?;
@@ -42,7 +45,11 @@ impl LinkRepo<'_> {
         Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
     }
 
-    pub fn get(&self, skill_id: &str, attribute_id: &str) -> Result<Option<SkillAttributeLink>, StoreError> {
+    pub fn get(
+        &self,
+        skill_id: &str,
+        attribute_id: &str,
+    ) -> Result<Option<SkillAttributeLink>, StoreError> {
         let mut stmt = self.db.prepare(
             "SELECT skill_id, attribute_id, weight FROM skill_attributes WHERE skill_id = ?1 AND attribute_id = ?2",
         )?;
@@ -61,7 +68,11 @@ impl LinkRepo<'_> {
     ) -> Result<Vec<SkillAttributeLink>, StoreError> {
         let exists: Option<i64> = self
             .db
-            .query_row("SELECT 1 FROM skills WHERE id = ?1", params![skill_id], |r| r.get(0))
+            .query_row(
+                "SELECT 1 FROM skills WHERE id = ?1",
+                params![skill_id],
+                |r| r.get(0),
+            )
             .optional()?;
         if exists.is_none() {
             return Err(StoreError::not_found(format!("技能不存在：{skill_id}")));
@@ -89,17 +100,26 @@ impl LinkRepo<'_> {
             }
             let attr: Option<i64> = self
                 .db
-                .query_row("SELECT 1 FROM attributes WHERE id = ?1", params![link.attribute_id], |r| r.get(0))
+                .query_row(
+                    "SELECT 1 FROM attributes WHERE id = ?1",
+                    params![link.attribute_id],
+                    |r| r.get(0),
+                )
                 .optional()?;
             if attr.is_none() {
-                return Err(StoreError::not_found(format!("属性不存在：{}", link.attribute_id)));
+                return Err(StoreError::not_found(format!(
+                    "属性不存在：{}",
+                    link.attribute_id
+                )));
             }
             if seen.insert(link.attribute_id.clone()) {
                 deduped.push(link.clone());
             }
         }
-        self.db
-            .execute("DELETE FROM skill_attributes WHERE skill_id = ?1", params![skill_id])?;
+        self.db.execute(
+            "DELETE FROM skill_attributes WHERE skill_id = ?1",
+            params![skill_id],
+        )?;
         for l in &deduped {
             self.db.execute(
                 "INSERT INTO skill_attributes (skill_id, attribute_id, weight) VALUES (?1, ?2, ?3)",

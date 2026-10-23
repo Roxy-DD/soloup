@@ -242,6 +242,22 @@ export interface AchProgress {
  */
 export function achProgress(stats: AchStats, cond: AchCondition | null): AchProgress | null {
   if (!cond) return null;
+  if ('all' in cond || 'any' in cond) {
+    const isAll = 'all' in cond;
+    const children = isAll ? cond.all : cond.any;
+    if (!children.length) return null;
+    const progress = children.map((child) => achProgress(stats, child));
+    if (progress.some((entry) => entry === null)) return null;
+    const values = progress.filter((entry) => entry !== null);
+    const complete = values.filter((entry) => entry.ratio >= 1).length;
+    const ratio = isAll
+      ? values.reduce((sum, entry) => sum + entry.ratio, 0) / values.length
+      : Math.max(...values.map((entry) => entry.ratio));
+    return {
+      text: `${isAll ? '全部条件' : '任一条件'}进度 ${complete} / ${values.length}`,
+      ratio,
+    };
+  }
   const cur = achStatValue(stats, cond.stat);
   if (cur === undefined) return null;
   const target = cond.ref ? achStatValue(stats, cond.ref) : cond.value;

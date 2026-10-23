@@ -49,7 +49,9 @@ impl AuditRepo<'_> {
             params![at, actor.as_str(), tool, params_json],
         )?;
         let id = self.db.last_insert_rowid();
-        let mut stmt = self.db.prepare("SELECT id, at, actor, tool, params_json FROM audit_log WHERE id = ?")?;
+        let mut stmt = self
+            .db
+            .prepare("SELECT id, at, actor, tool, params_json FROM audit_log WHERE id = ?")?;
         let row = stmt.query_row(params![id], from_row)?;
         Ok(row)
     }

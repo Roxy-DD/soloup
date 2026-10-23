@@ -32,6 +32,30 @@ pub fn get_tool_definitions() -> Vec<Value> {
     }).collect()
 }
 
+fn flatten_skill_tree(tree: &Value) -> Vec<Value> {
+    fn walk(nodes: &[Value], out: &mut Vec<Value>) {
+        for node in nodes {
+            out.push(json!({
+                "id": node.get("id"),
+                "name": node.get("name"),
+                "leaf": node.get("leaf"),
+                "archived": node.get("archived"),
+                "level": node.get("level"),
+                "checkins": node.get("checkins"),
+                "attributes": node.get("attrs")
+            }));
+            if let Some(children) = node.get("children").and_then(Value::as_array) {
+                walk(children, out);
+            }
+        }
+    }
+    let mut out = Vec::new();
+    if let Some(nodes) = tree.as_array() {
+        walk(nodes, &mut out);
+    }
+    out
+}
+
 static TOOLS: &[ToolDef] = &[
     // ─── 元信息工具 ────────────────────────────────────────────────────────
     ToolDef {
@@ -50,7 +74,6 @@ static TOOLS: &[ToolDef] = &[
 - 调优参数前获取注册表和当前覆盖"#,
         input_schema_str: r#"{"type":"object","properties":{},"additionalProperties":false}"#,
     },
-
     // ─── 查询工具 ──────────────────────────────────────────────────────────
     ToolDef {
         name: "soloup_panel_overview",
@@ -68,12 +91,13 @@ static TOOLS: &[ToolDef] = &[
 - stats: 统计（总天数/连续/本周/最高技能等级等）
 - today: 今日打卡状态
 
+**解释范围**：技能等级和属性值是游戏化推算，不是经技能表现测评验证的能力分数。
+
 **使用场景**：
 - AI 需要了解面板整体状态时
 - 用户问"我现在什么水平"时"#,
         input_schema_str: r#"{"type":"object","properties":{},"additionalProperties":false}"#,
     },
-
     ToolDef {
         name: "soloup_attribute_list",
         description: r#"列出所有属性（含派生值、description、贡献占比）。
@@ -85,7 +109,6 @@ static TOOLS: &[ToolDef] = &[
 - 创建技能时选择关联属性"#,
         input_schema_str: r#"{"type":"object","properties":{},"additionalProperties":false}"#,
     },
-
     ToolDef {
         name: "soloup_attribute_get",
         description: r#"获取单个属性详情 + 关联技能列表。
@@ -100,7 +123,6 @@ static TOOLS: &[ToolDef] = &[
 - 分析某属性由哪些技能贡献"#,
         input_schema_str: r#"{"type":"object","properties":{"id":{"type":"string","description":"属性 ID"}},"required":["id"],"additionalProperties":false}"#,
     },
-
     ToolDef {
         name: "soloup_skill_tree",
         description: r#"返回完整技能树（含等级/E/C/V/曲线参数/子节点/关联属性）。
@@ -113,13 +135,14 @@ static TOOLS: &[ToolDef] = &[
 - children (子节点)
 - attrs (关联属性 [[attrId, weight]])
 
+**解释范围**：level/C/V 是当前游戏化进度模型数值，不是经表现测评验证的真实能力分数；练习记录也不等同于能力提升。
+
 **使用场景**：
 - 了解技能树整体结构
 - 创建技能时选择父节点
 - 分析技能成长状态"#,
         input_schema_str: r#"{"type":"object","properties":{},"additionalProperties":false}"#,
     },
-
     ToolDef {
         name: "soloup_skill_get",
         description: r#"获取单个技能详情 + 子节点 + 关联属性。
@@ -134,7 +157,6 @@ static TOOLS: &[ToolDef] = &[
 - 分析技能的成长曲线和关联"#,
         input_schema_str: r#"{"type":"object","properties":{"id":{"type":"string","description":"技能 ID"}},"required":["id"],"additionalProperties":false}"#,
     },
-
     ToolDef {
         name: "soloup_daily_status",
         description: r#"获取某日打卡详情 / 结算状态。
@@ -154,7 +176,6 @@ static TOOLS: &[ToolDef] = &[
 - 确认今天是否已打卡"#,
         input_schema_str: r#"{"type":"object","properties":{"date":{"type":"string","description":"日期 YYYY-MM-DD","pattern":"^\\d{4}-\\d{2}-\\d{2}$"}},"additionalProperties":false}"#,
     },
-
     ToolDef {
         name: "soloup_audit_log",
         description: r#"获取最近变更记录（审计追溯）。
@@ -172,7 +193,6 @@ static TOOLS: &[ToolDef] = &[
 - 查看 AI 或用户做了什么操作"#,
         input_schema_str: r#"{"type":"object","properties":{"limit":{"type":"integer","description":"返回条数","default":50},"offset":{"type":"integer","description":"偏移量","default":0},"actor":{"type":"string","enum":["user","ai","system"],"description":"过滤 actor"},"tool":{"type":"string","description":"过滤工具名"}},"additionalProperties":false}"#,
     },
-
     ToolDef {
         name: "soloup_settings_get",
         description: r#"获取当前设置（参数覆盖 / AI 执行白名单 / 主题等）。
@@ -186,15 +206,14 @@ static TOOLS: &[ToolDef] = &[
 - 了解哪些参数被覆盖"#,
         input_schema_str: r#"{"type":"object","properties":{},"additionalProperties":false}"#,
     },
-
     ToolDef {
         name: "soloup_insights",
-        description: r#"**分析建议**：E 增速分析、趋势缺口、推荐技能。
+        description: r#"**分析建议**：显示相对较低的属性、关联技能，以及近 7/30 天可观测的练习频次。
 
 **返回**：
 - weak_attributes: 弱项属性（值最低的 2-3 个）
 - recommended_skills: 推荐技能（基于弱项属性关联）
-- growth_trend: 成长趋势（最近 7/30 天的 E 值变化）
+- practice_activity: 最近 7/30 天的记录天数与技能打卡次数（这是练习行为，不代表能力变化）
 - suggestions: 具体建议（文字描述）
 
 **使用场景**：
@@ -205,7 +224,13 @@ static TOOLS: &[ToolDef] = &[
 **注意**：此工具为分析型，不修改任何数据"#,
         input_schema_str: r#"{"type":"object","properties":{},"additionalProperties":false}"#,
     },
+    ToolDef {
+        name: "soloup_review",
+        description: r#"只读全面盘点当前 Soloup 数据，供复核技能树、属性、成就可达性、项目与个人设置。不会修改任何数据。
 
+返回统计、属性强弱项、重复/缺少属性关联的活跃叶子技能、项目状态、成就当前条件与依赖是否可达、个人配置和参数覆盖摘要。调用后请基于数据给出建议，未经用户明确要求不要直接写入设置或重做成就。"#,
+        input_schema_str: r#"{"type":"object","properties":{},"additionalProperties":false}"#,
+    },
     // ─── 属性管理 CRUD ───────────────────────────────────────────────────
     ToolDef {
         name: "soloup_attribute_create",
@@ -231,7 +256,6 @@ static TOOLS: &[ToolDef] = &[
 **注意**：category 建议由 AI 依据属性名推断"#,
         input_schema_str: r#"{"type":"object","properties":{"name":{"type":"string","description":"属性名称"},"description":{"type":"string","description":"属性定义"},"category":{"type":"string","enum":["physical","mental","social","creative"]},"color":{"type":"string"},"icon":{"type":"string"},"base_value":{"type":"number"},"max_value":{"type":"number"},"alpha":{"type":"number"},"w0":{"type":"number"}},"required":["name"],"additionalProperties":false}"#,
     },
-
     ToolDef {
         name: "soloup_attribute_update",
         description: r#"更新属性。
@@ -252,7 +276,6 @@ static TOOLS: &[ToolDef] = &[
 - 调整属性分类或颜色"#,
         input_schema_str: r#"{"type":"object","properties":{"id":{"type":"string","description":"属性 ID"},"name":{"type":"string"},"description":{"type":"string"},"category":{"type":"string","enum":["physical","mental","social","creative"]},"color":{"type":"string"},"icon":{"type":"string"},"sort":{"type":"integer"}},"required":["id"],"additionalProperties":false}"#,
     },
-
     ToolDef {
         name: "soloup_attribute_delete",
         description: r#"删除属性。
@@ -271,7 +294,6 @@ static TOOLS: &[ToolDef] = &[
 - 否则建议归档（当前版本不支持属性归档，请谨慎操作）"#,
         input_schema_str: r#"{"type":"object","properties":{"id":{"type":"string","description":"属性 ID"}},"required":["id"],"additionalProperties":false}"#,
     },
-
     // ─── 技能管理 CRUD ────────────────────────────────────────────────────
     ToolDef {
         name: "soloup_skill_create",
@@ -298,7 +320,6 @@ static TOOLS: &[ToolDef] = &[
 - links 的 weight 建议主关联 1.0，次关联 0.3-0.5"#,
         input_schema_str: r#"{"type":"object","properties":{"name":{"type":"string","description":"技能名称"},"category":{"type":"string","enum":["physical","cognitive","knowledge"],"description":"技能类别"},"description":{"type":"string","description":"用途说明"},"parent_id":{"type":"string","description":"父技能 ID"},"difficulty":{"type":"string","enum":["casual","normal","hard","challenge","legendary"]},"links":{"type":"array","items":{"type":"object","properties":{"attribute_id":{"type":"string"},"weight":{"type":"number","minimum":0,"maximum":1}},"required":["attribute_id"]}}},"required":["name","category"],"additionalProperties":false}"#,
     },
-
     ToolDef {
         name: "soloup_skill_update",
         description: r#"更新技能。
@@ -318,7 +339,6 @@ static TOOLS: &[ToolDef] = &[
 - 调整难度或曲线类型"#,
         input_schema_str: r#"{"type":"object","properties":{"id":{"type":"string","description":"技能 ID"},"name":{"type":"string"},"description":{"type":"string"},"category":{"type":"string","enum":["physical","cognitive","knowledge"]},"difficulty":{"type":"string","enum":["casual","normal","hard","challenge","legendary"]},"curve_type":{"type":"string","enum":["saturated","sigmoid"]}},"required":["id"],"additionalProperties":false}"#,
     },
-
     ToolDef {
         name: "soloup_skill_move",
         description: r#"移动技能到新的父节点。
@@ -336,7 +356,6 @@ static TOOLS: &[ToolDef] = &[
 **注意**：服务端会执行环检测，防止循环引用"#,
         input_schema_str: r#"{"type":"object","properties":{"id":{"type":"string","description":"技能 ID"},"parent_id":{"type":"string","description":"新父技能 ID"}},"required":["id"],"additionalProperties":false}"#,
     },
-
     ToolDef {
         name: "soloup_skill_archive",
         description: r#"归档技能。
@@ -353,7 +372,6 @@ static TOOLS: &[ToolDef] = &[
 **注意**：归档是软删除，可随时恢复"#,
         input_schema_str: r#"{"type":"object","properties":{"id":{"type":"string","description":"技能 ID"}},"required":["id"],"additionalProperties":false}"#,
     },
-
     ToolDef {
         name: "soloup_skill_restore",
         description: r#"恢复已归档的技能。
@@ -367,7 +385,6 @@ static TOOLS: &[ToolDef] = &[
 - 重新开始练习之前归档的技能"#,
         input_schema_str: r#"{"type":"object","properties":{"id":{"type":"string","description":"技能 ID"}},"required":["id"],"additionalProperties":false}"#,
     },
-
     ToolDef {
         name: "soloup_skill_delete",
         description: r#"删除技能（物理删除）。
@@ -386,7 +403,6 @@ static TOOLS: &[ToolDef] = &[
 - 此操作不可逆"#,
         input_schema_str: r#"{"type":"object","properties":{"id":{"type":"string","description":"技能 ID"}},"required":["id"],"additionalProperties":false}"#,
     },
-
     ToolDef {
         name: "soloup_skill_link_set",
         description: r#"设置技能的属性关联。
@@ -407,7 +423,6 @@ static TOOLS: &[ToolDef] = &[
 - 此操作会替换所有现有关联"#,
         input_schema_str: r#"{"type":"object","properties":{"id":{"type":"string","description":"技能 ID"},"links":{"type":"array","items":{"type":"object","properties":{"attribute_id":{"type":"string","description":"属性 ID"},"weight":{"type":"number","minimum":0,"maximum":1,"description":"权重"}},"required":["attribute_id","weight"]},"description":"关联列表"}},"required":["id","links"],"additionalProperties":false}"#,
     },
-
     ToolDef {
         name: "soloup_skill_link_remove",
         description: r#"移除技能的属性关联。
@@ -424,7 +439,6 @@ static TOOLS: &[ToolDef] = &[
 **注意**：如需调整权重，使用 soloup_skill_link_set 重新设置"#,
         input_schema_str: r#"{"type":"object","properties":{"id":{"type":"string","description":"技能 ID"},"attribute_id":{"type":"string","description":"要移除的属性 ID"}},"required":["id","attribute_id"],"additionalProperties":false}"#,
     },
-
     // ─── 结算工具 ──────────────────────────────────────────────────────────
     ToolDef {
         name: "soloup_recalc",
@@ -440,7 +454,6 @@ static TOOLS: &[ToolDef] = &[
 **注意**：此操作可能耗时较长（技能多时）"#,
         input_schema_str: r#"{"type":"object","properties":{},"additionalProperties":false}"#,
     },
-
     // ─── 参数调优工具 ─────────────────────────────────────────────────────
     ToolDef {
         name: "soloup_param_preview",
@@ -464,7 +477,6 @@ static TOOLS: &[ToolDef] = &[
 **注意**：此操作不修改任何数据"#,
         input_schema_str: r#"{"type":"object","properties":{"key":{"type":"string","description":"参数 key"},"value":{"type":"number","description":"新值"}},"required":["key","value"],"additionalProperties":false}"#,
     },
-
     ToolDef {
         name: "soloup_param_set",
         description: r#"设置参数（覆盖默认值）。
@@ -489,7 +501,6 @@ static TOOLS: &[ToolDef] = &[
 - 默认需用户确认（M2 模式）"#,
         input_schema_str: r#"{"type":"object","properties":{"key":{"type":"string","description":"参数 key"},"value":{"type":"number","description":"新值"}},"required":["key","value"],"additionalProperties":false}"#,
     },
-
     ToolDef {
         name: "soloup_param_remove",
         description: r#"移除参数覆盖，恢复注册表默认值。
@@ -506,7 +517,6 @@ static TOOLS: &[ToolDef] = &[
 - 恢复某参数的默认值"#,
         input_schema_str: r#"{"type":"object","properties":{"key":{"type":"string","description":"参数 key"}},"required":["key"],"additionalProperties":false}"#,
     },
-
     // ─── 项目 CRUD ──────────────────────────────────────────────────────────
     ToolDef {
         name: "soloup_project_list",
@@ -520,7 +530,6 @@ static TOOLS: &[ToolDef] = &[
 - 了解项目进度和状态"#,
         input_schema_str: r#"{"type":"object","properties":{},"additionalProperties":false}"#,
     },
-
     ToolDef {
         name: "soloup_project_create",
         description: r#"创建新项目。
@@ -541,7 +550,6 @@ static TOOLS: &[ToolDef] = &[
 - 创建时间范围，周期内打卡自动归入"#,
         input_schema_str: r#"{"type":"object","properties":{"name":{"type":"string","description":"项目名称"},"description":{"type":"string","description":"项目描述"},"start_date":{"type":"string","description":"开始日期 YYYY-MM-DD"},"end_date":{"type":"string","description":"结束日期 YYYY-MM-DD"},"color":{"type":"string","description":"颜色标识"}},"required":["name"],"additionalProperties":false}"#,
     },
-
     ToolDef {
         name: "soloup_project_update",
         description: r#"更新项目信息。
@@ -565,7 +573,6 @@ static TOOLS: &[ToolDef] = &[
 - 更改项目状态"#,
         input_schema_str: r#"{"type":"object","properties":{"id":{"type":"string","description":"项目 ID"},"name":{"type":"string","description":"新名称"},"description":{"type":"string","description":"新描述"},"color":{"type":"string","description":"新颜色"},"start_date":{"type":"string","description":"新开始日期"},"end_date":{"type":"string","description":"新结束日期"},"status":{"type":"string","enum":["planned","active","completed","abandoned"],"description":"新状态"}},"required":["id"],"additionalProperties":false}"#,
     },
-
     ToolDef {
         name: "soloup_project_delete",
         description: r#"删除项目（物理删除，不可恢复）。
@@ -584,7 +591,6 @@ static TOOLS: &[ToolDef] = &[
 **注意**：删除前建议先确认，此操作不可撤销"#,
         input_schema_str: r#"{"type":"object","properties":{"id":{"type":"string","description":"项目 ID"}},"required":["id"],"additionalProperties":false}"#,
     },
-
     // ─── 打卡操作 ─────────────────────────────────────────────────────────
     ToolDef {
         name: "soloup_checkin_set",
@@ -607,7 +613,6 @@ static TOOLS: &[ToolDef] = &[
 **注意**：默认需用户确认（M2 模式）"#,
         input_schema_str: r#"{"type":"object","properties":{"date":{"type":"string","description":"日期 YYYY-MM-DD"},"skill_ids":{"type":"array","items":{"type":"string"},"description":"技能 ID 列表"},"note":{"type":"string","description":"备注"},"project_id":{"type":"string","description":"关联项目 ID"}},"required":["skill_ids"],"additionalProperties":false}"#,
     },
-
     ToolDef {
         name: "soloup_checkin_clear",
         description: r#"清除某日打卡并重新结算。
@@ -623,7 +628,6 @@ static TOOLS: &[ToolDef] = &[
 - 修正打卡记录"#,
         input_schema_str: r#"{"type":"object","properties":{"date":{"type":"string","description":"日期 YYYY-MM-DD"}},"additionalProperties":false}"#,
     },
-
     ToolDef {
         name: "soloup_records_list",
         description: r#"查询历史打卡记录。
@@ -640,7 +644,6 @@ static TOOLS: &[ToolDef] = &[
 - 分析打卡趋势"#,
         input_schema_str: r#"{"type":"object","properties":{"date":{"type":"string","description":"筛选日期 YYYY-MM-DD"},"limit":{"type":"integer","description":"返回条数"}},"additionalProperties":false}"#,
     },
-
     // ─── 成就 CRUD ──────────────────────────────────────────────────────────
     ToolDef {
         name: "soloup_achievement_list",
@@ -655,7 +658,6 @@ static TOOLS: &[ToolDef] = &[
 - 查看依赖链和渐进揭示配置"#,
         input_schema_str: r#"{"type":"object","properties":{},"additionalProperties":false}"#,
     },
-
     ToolDef {
         name: "soloup_achievement_create",
         description: r#"创建自定义成就。
@@ -666,15 +668,23 @@ static TOOLS: &[ToolDef] = &[
 - type: 类型（skill/attribute/project/milestone）
 - rarity: 稀有度（common/rare/epic/legendary）
 - points: 积分值（默认 10）
-- condition: 解锁条件 JSON（简化 DSL）
+- condition: 解锁条件 JSON（stat 比较，或嵌套 all/any 组合）
 - hidden: 是否隐藏成就（默认 false）
 - requires: 前置成就 ID 列表（全部解锁后该卡才开始显现）
 - reveal_at: 渐进揭示阈值 0–1（隐藏卡进度达到此比例时显示名称和描述）
 
 **条件 DSL 示例**：
 ```json
-{"type":"stat_threshold","stat":"totalDays","operator":">=","value":100}
+{"all":[
+  {"stat":"totalDays","operator":">=","value":100},
+  {"any":[
+    {"stat":"streak","operator":">=","value":7},
+    {"stat":"maxSkillCheckins","operator":">=","value":30}
+  ]}
+]}
 ```
+
+支持统计量：`totalDays`、`streak`、`weekDays`、`maxSkillCheckins`、`maxLitOneDay`、`totalAttrs`、`projectsCompleted`、`maxSkillLv`。`maxSkillLv` 是游戏化分数，不是能力测评。依赖需引用已有成就，且不能自引用或成环；有下游依赖的成就不可直接删除。
 
 **成就设计规则**：
 1. **隐藏成就**（hidden=true）：卡牌初始不可见，满足前置条件后逐步显现
@@ -703,9 +713,8 @@ static TOOLS: &[ToolDef] = &[
 - 创建个性化成就
 - 构建成就依赖链
 - 设计渐进揭示体验"#,
-        input_schema_str: r#"{"type":"object","properties":{"name":{"type":"string","description":"成就名称"},"description":{"type":"string","description":"成就描述"},"type":{"type":"string","enum":["skill","attribute","project","milestone"],"description":"类型"},"rarity":{"type":"string","enum":["common","rare","epic","legendary"],"description":"稀有度"},"points":{"type":"integer","description":"积分值"},"condition":{"type":"object","description":"解锁条件 JSON"},"hidden":{"type":"boolean","description":"是否隐藏成就"},"requires":{"type":"array","items":{"type":"string"},"description":"前置成就 ID 列表"},"reveal_at":{"type":"number","description":"渐进揭示阈值 0–1"}},"required":["name"],"additionalProperties":false}"#,
+        input_schema_str: r#"{"type":"object","properties":{"name":{"type":"string","description":"成就名称"},"description":{"type":"string","description":"成就描述"},"type":{"type":"string","enum":["skill","attribute","project","milestone"],"description":"类型"},"rarity":{"type":"string","enum":["common","rare","epic","legendary"],"description":"稀有度"},"points":{"type":"integer","description":"积分值"},"condition":{"type":"object","description":"解锁条件 JSON，支持比较条件和 all/any 组合"},"hidden":{"type":"boolean","description":"是否隐藏成就"},"requires":{"type":"array","items":{"type":"string"},"description":"前置成就 ID 列表"},"reveal_at":{"type":"number","description":"渐进揭示阈值 0–1"}},"required":["name","condition"],"additionalProperties":false}"#,
     },
-
     ToolDef {
         name: "soloup_achievement_update",
         description: r#"更新成就信息。
@@ -738,7 +747,6 @@ static TOOLS: &[ToolDef] = &[
 - 修改依赖链或渐进揭示阈值"#,
         input_schema_str: r#"{"type":"object","properties":{"id":{"type":"string","description":"成就 ID"},"name":{"type":"string","description":"新名称"},"description":{"type":"string","description":"新描述"},"type":{"type":"string","enum":["skill","attribute","project","milestone"],"description":"新类型"},"rarity":{"type":"string","enum":["common","rare","epic","legendary"],"description":"新稀有度"},"points":{"type":"integer","description":"新积分值"},"condition":{"type":"object","description":"新解锁条件"},"hidden":{"type":"boolean","description":"是否隐藏成就"},"requires":{"type":"array","items":{"type":"string"},"description":"前置成就 ID 列表"},"reveal_at":{"type":"number","description":"渐进揭示阈值 0–1"}},"required":["id"],"additionalProperties":false}"#,
     },
-
     ToolDef {
         name: "soloup_achievement_delete",
         description: r#"删除成就（物理删除）。
@@ -755,7 +763,6 @@ static TOOLS: &[ToolDef] = &[
 - 清理测试数据"#,
         input_schema_str: r#"{"type":"object","properties":{"id":{"type":"string","description":"成就 ID"}},"required":["id"],"additionalProperties":false}"#,
     },
-
     // ─── 个人设置 ──────────────────────────────────────────────────────────
     ToolDef {
         name: "soloup_life_view",
@@ -771,7 +778,6 @@ static TOOLS: &[ToolDef] = &[
 - 了解人生阶段"#,
         input_schema_str: r#"{"type":"object","properties":{},"additionalProperties":false}"#,
     },
-
     ToolDef {
         name: "soloup_life_save",
         description: r#"保存生命轴设置。
@@ -788,7 +794,6 @@ static TOOLS: &[ToolDef] = &[
 - 调整预期寿命"#,
         input_schema_str: r#"{"type":"object","properties":{"born":{"type":"string","description":"出生日期 YYYY-MM-DD"},"life_expectancy":{"type":"number","description":"预期寿命（年）"}},"required":["born"],"additionalProperties":false}"#,
     },
-
     ToolDef {
         name: "soloup_profile_load",
         description: r#"加载用户配置。
@@ -804,7 +809,6 @@ static TOOLS: &[ToolDef] = &[
 - 读取用户偏好设置"#,
         input_schema_str: r#"{"type":"object","properties":{},"additionalProperties":false}"#,
     },
-
     ToolDef {
         name: "soloup_profile_save",
         description: r#"保存用户配置。
@@ -823,7 +827,6 @@ static TOOLS: &[ToolDef] = &[
 - 更新用户偏好"#,
         input_schema_str: r#"{"type":"object","properties":{"nickname":{"type":"string","description":"昵称"},"avatar":{"type":"string","description":"头像 URL"},"remind_time":{"type":"string","description":"提醒时间 HH:MM"},"motion":{"type":"boolean","description":"动画开关"},"lock_history":{"type":"boolean","description":"历史锁定"}},"additionalProperties":false}"#,
     },
-
     // ─── 统计查询 ──────────────────────────────────────────────────────────
     ToolDef {
         name: "soloup_stats",
@@ -886,6 +889,7 @@ pub fn call_tool(state: &AppState, name: &str, args: &Value) -> Result<Value, To
         "soloup_audit_log" => "audit",
         "soloup_settings_get" => "settings",
         "soloup_insights" => "insights",
+        "soloup_review" => "bootstrap",
         "soloup_recalc" => "recalc",
         "soloup_param_preview" => "param.preview",
         "soloup_param_set" => "param.set",
@@ -927,17 +931,164 @@ pub fn call_tool(state: &AppState, name: &str, args: &Value) -> Result<Value, To
 
     // 特殊处理：attribute.get 和 skill.linkRemove 需要额外逻辑
     match name {
+        "soloup_review" => {
+            let overview =
+                dispatch(&mut solver, "overview", &json!({})).map_err(|e| ToolError {
+                    code: e.code,
+                    message: e.message,
+                })?;
+            let stats = dispatch(&mut solver, "stats", &json!({})).map_err(|e| ToolError {
+                code: e.code,
+                message: e.message,
+            })?;
+            let achievements =
+                dispatch(&mut solver, "achievements", &json!({})).map_err(|e| ToolError {
+                    code: e.code,
+                    message: e.message,
+                })?;
+            let projects =
+                dispatch(&mut solver, "projects.list", &json!({})).map_err(|e| ToolError {
+                    code: e.code,
+                    message: e.message,
+                })?;
+            let profile =
+                dispatch(&mut solver, "profile.load", &json!({})).map_err(|e| ToolError {
+                    code: e.code,
+                    message: e.message,
+                })?;
+            let life = dispatch(&mut solver, "life.view", &json!({})).map_err(|e| ToolError {
+                code: e.code,
+                message: e.message,
+            })?;
+            let settings =
+                dispatch(&mut solver, "settings", &json!({})).map_err(|e| ToolError {
+                    code: e.code,
+                    message: e.message,
+                })?;
+            let skill_tree = dispatch(&mut solver, "tree", &json!({})).map_err(|e| ToolError {
+                code: e.code,
+                message: e.message,
+            })?;
+
+            let attrs = overview
+                .get("attributes")
+                .and_then(Value::as_array)
+                .cloned()
+                .unwrap_or_default();
+            let mut weak = attrs.clone();
+            weak.sort_by(|a, b| {
+                a.get("value")
+                    .and_then(Value::as_f64)
+                    .unwrap_or(0.0)
+                    .partial_cmp(&b.get("value").and_then(Value::as_f64).unwrap_or(0.0))
+                    .unwrap_or(std::cmp::Ordering::Equal)
+            });
+            let attrs_by_id: std::collections::HashMap<String, String> = attrs
+                .iter()
+                .filter_map(|a| {
+                    Some((
+                        a.get("id")?.as_str()?.to_string(),
+                        a.get("name")?.as_str()?.to_string(),
+                    ))
+                })
+                .collect();
+            let links = solver
+                .store
+                .skills()
+                .list_all()
+                .map_err(ToolError::from_store)?
+                .into_iter()
+                .map(|skill| {
+                    let linked = solver
+                        .store
+                        .links()
+                        .list_for_skill(&skill.id)
+                        .map_err(ToolError::from_store)?;
+                    Ok(json!({
+                        "skillId": skill.id,
+                        "skillName": skill.name,
+                        "isBranch": skill.is_branch,
+                        "archived": skill.archived_at.is_some(),
+                        "attributes": linked.iter().map(|l| json!({
+                            "id": l.attribute_id,
+                            "name": attrs_by_id.get(&l.attribute_id),
+                            "weight": l.weight
+                        })).collect::<Vec<_>>()
+                    }))
+                })
+                .collect::<Result<Vec<_>, ToolError>>()?;
+            let achievements = achievements.as_array().cloned().unwrap_or_default();
+            let unlocked_ids: std::collections::HashSet<String> = achievements
+                .iter()
+                .filter_map(|a| {
+                    (a.get("unlocked").and_then(Value::as_bool) == Some(true))
+                        .then(|| a.get("id").and_then(Value::as_str).map(str::to_string))
+                        .flatten()
+                })
+                .collect();
+            let achievement_review = achievements
+                .iter()
+                .map(|a| {
+                    let requires = a
+                        .get("requires")
+                        .and_then(Value::as_array)
+                        .cloned()
+                        .unwrap_or_default();
+                    let missing_requires = requires
+                        .iter()
+                        .filter_map(Value::as_str)
+                        .filter(|id| !unlocked_ids.contains(*id))
+                        .collect::<Vec<_>>();
+                    json!({
+                        "id": a.get("id"),
+                        "name": a.get("name"),
+                        "description": a.get("description"),
+                        "rarity": a.get("rarity"),
+                        "points": a.get("points"),
+                        "condition": a.get("condition"),
+                        "unlocked": a.get("unlocked"),
+                        "hidden": a.get("hidden"),
+                        "requires": requires,
+                        "missingRequires": missing_requires
+                    })
+                })
+                .collect::<Vec<_>>();
+
+            Ok(json!({
+                "readOnly": true,
+                "stats": stats,
+                "attributes": { "all": attrs, "weakest": weak.into_iter().take(3).collect::<Vec<_>>() },
+                "skillLinks": links,
+                "skills": flatten_skill_tree(&skill_tree),
+                "projects": projects,
+                "achievements": achievement_review,
+                "profile": profile,
+                "life": life,
+                "settings": settings
+            }))
+        }
         "soloup_attribute_get" => {
-            let id = args.get("id").and_then(|v| v.as_str()).ok_or_else(|| ToolError {
-                code: "ERR_VALIDATION".into(),
-                message: "缺少参数 id".into(),
-            })?;
-            let snap = solver.snapshot(None).map_err(|e| ToolError::from_solver(e))?;
-            let derived = snap.attributes.iter().find(|a| a.attribute.id == id).ok_or_else(|| ToolError {
-                code: "ERR_NOT_FOUND".into(),
-                message: format!("属性不存在：{}", id),
-            })?;
-            let links = solver.store.links().list_for_attribute(&id).map_err(|e| ToolError::from_store(e))?;
+            let id = args
+                .get("id")
+                .and_then(|v| v.as_str())
+                .ok_or_else(|| ToolError {
+                    code: "ERR_VALIDATION".into(),
+                    message: "缺少参数 id".into(),
+                })?;
+            let snap = solver.snapshot(None).map_err(ToolError::from_solver)?;
+            let derived = snap
+                .attributes
+                .iter()
+                .find(|a| a.attribute.id == id)
+                .ok_or_else(|| ToolError {
+                    code: "ERR_NOT_FOUND".into(),
+                    message: format!("属性不存在：{}", id),
+                })?;
+            let links = solver
+                .store
+                .links()
+                .list_for_attribute(id)
+                .map_err(ToolError::from_store)?;
             Ok(json!({
                 "id": derived.attribute.id,
                 "name": derived.attribute.name,
@@ -956,16 +1107,26 @@ pub fn call_tool(state: &AppState, name: &str, args: &Value) -> Result<Value, To
             }))
         }
         "soloup_skill_link_remove" => {
-            let id = args.get("id").and_then(|v| v.as_str()).ok_or_else(|| ToolError {
-                code: "ERR_VALIDATION".into(),
-                message: "缺少参数 id".into(),
-            })?;
-            let attribute_id = args.get("attribute_id").and_then(|v| v.as_str()).ok_or_else(|| ToolError {
-                code: "ERR_VALIDATION".into(),
-                message: "缺少参数 attribute_id".into(),
-            })?;
+            let id = args
+                .get("id")
+                .and_then(|v| v.as_str())
+                .ok_or_else(|| ToolError {
+                    code: "ERR_VALIDATION".into(),
+                    message: "缺少参数 id".into(),
+                })?;
+            let attribute_id = args
+                .get("attribute_id")
+                .and_then(|v| v.as_str())
+                .ok_or_else(|| ToolError {
+                    code: "ERR_VALIDATION".into(),
+                    message: "缺少参数 attribute_id".into(),
+                })?;
             // 获取现有 links，移除目标，重新设置
-            let existing = solver.store.links().list_for_skill(&id).map_err(|e| ToolError::from_store(e))?;
+            let existing = solver
+                .store
+                .links()
+                .list_for_skill(id)
+                .map_err(ToolError::from_store)?;
             let new_links: Vec<soloup_store::links::SkillLinkInput> = existing
                 .into_iter()
                 .filter(|l| l.attribute_id != attribute_id)
@@ -974,22 +1135,36 @@ pub fn call_tool(state: &AppState, name: &str, args: &Value) -> Result<Value, To
                     weight: l.weight,
                 })
                 .collect();
-            let res = solver.mutate(
-                soloup_solver::service::MutationKind::SkillLinkSet {
-                    id: id.to_string(),
-                    links: new_links,
-                },
-                soloup_core::schema::AuditActor::Ai,
-            ).map_err(|e| ToolError::from_solver(e))?;
+            let res = solver
+                .mutate(
+                    soloup_solver::service::MutationKind::SkillLinkSet {
+                        id: id.to_string(),
+                        links: new_links,
+                    },
+                    soloup_core::schema::AuditActor::Ai,
+                )
+                .map_err(ToolError::from_solver)?;
             Ok(res.detail)
         }
         "soloup_daily_status" => {
-            let date = args.get("date").and_then(|v| v.as_str()).unwrap_or(&soloup_core::dates::today_iso()).to_string();
-            let recs = solver.store.daily().list_records(None, None).map_err(|e| ToolError::from_store(e))?;
+            let date = args
+                .get("date")
+                .and_then(|v| v.as_str())
+                .unwrap_or(&soloup_core::dates::today_iso())
+                .to_string();
+            let recs = solver
+                .store
+                .daily()
+                .list_records(None, None)
+                .map_err(ToolError::from_store)?;
             let rec = recs.into_iter().find(|r| r.date == date);
             match rec {
                 Some(r) => {
-                    let ids = solver.store.daily().skill_ids_on(&date).map_err(|e| ToolError::from_store(e))?;
+                    let ids = solver
+                        .store
+                        .daily()
+                        .skill_ids_on(&date)
+                        .map_err(ToolError::from_store)?;
                     Ok(json!({
                         "date": r.date,
                         "skillIds": ids,
@@ -1008,20 +1183,38 @@ pub fn call_tool(state: &AppState, name: &str, args: &Value) -> Result<Value, To
         }
         "soloup_insights" => {
             // 分析建议：弱项属性 + 推荐技能
-            let snap = solver.snapshot(None).map_err(|e| ToolError::from_solver(e))?;
+            let snap = solver.snapshot(None).map_err(ToolError::from_solver)?;
             let mut sorted_attrs: Vec<_> = snap.attributes.iter().collect();
-            sorted_attrs.sort_by(|a, b| a.value.partial_cmp(&b.value).unwrap_or(std::cmp::Ordering::Equal));
-            let weak_attrs: Vec<_> = sorted_attrs.iter().take(2).map(|a| json!({
-                "id": a.attribute.id,
-                "name": a.attribute.name,
-                "value": a.value
-            })).collect();
+            sorted_attrs.sort_by(|a, b| {
+                a.value
+                    .partial_cmp(&b.value)
+                    .unwrap_or(std::cmp::Ordering::Equal)
+            });
+            let weak_attrs: Vec<_> = sorted_attrs
+                .iter()
+                .take(2)
+                .map(|a| {
+                    json!({
+                        "id": a.attribute.id,
+                        "name": a.attribute.name,
+                        "value": a.value
+                    })
+                })
+                .collect();
 
             // 推荐技能：基于弱项属性关联
-            let skills = solver.store.skills().list_all().map_err(|e| ToolError::from_store(e))?;
+            let skills = solver
+                .store
+                .skills()
+                .list_all()
+                .map_err(ToolError::from_store)?;
             let mut recommended = Vec::new();
             for attr in &sorted_attrs[..2.min(sorted_attrs.len())] {
-                let links = solver.store.links().list_for_attribute(&attr.attribute.id).map_err(|e| ToolError::from_store(e))?;
+                let links = solver
+                    .store
+                    .links()
+                    .list_for_attribute(&attr.attribute.id)
+                    .map_err(ToolError::from_store)?;
                 for link in links {
                     if let Some(skill) = skills.iter().find(|s| s.id == link.skill_id) {
                         recommended.push(json!({
@@ -1035,47 +1228,103 @@ pub fn call_tool(state: &AppState, name: &str, args: &Value) -> Result<Value, To
                 }
             }
 
+            let today = soloup_core::dates::today_iso();
+            let practice_window = |days: i64| -> Result<Value, ToolError> {
+                let from = soloup_core::dates::add_days(&today, -(days - 1));
+                let records = solver
+                    .store
+                    .daily()
+                    .list_records(Some(&from), Some(&today))
+                    .map_err(ToolError::from_store)?;
+                let members = solver
+                    .store
+                    .daily()
+                    .list_members(Some(&from), Some(&today))
+                    .map_err(ToolError::from_store)?;
+                Ok(json!({
+                    "days": days,
+                    "recordDays": records.len(),
+                    "skillCheckins": members.len()
+                }))
+            };
+
             Ok(json!({
                 "weakAttributes": weak_attrs,
                 "recommendedSkills": recommended,
-                "suggestions": format!("建议优先提升 {} 相关技能", sorted_attrs.first().map(|a| a.attribute.name.as_str()).unwrap_or("弱项"))
+                "practiceActivity": {
+                    "last7Days": practice_window(7)?,
+                    "last30Days": practice_window(30)?
+                },
+                "interpretation": "属性值与等级是当前版本的游戏化推算值，不是经测评验证的能力。练习次数仅表示记录行为。",
+                "suggestions": format!("建议优先关注 {} 相关技能；该建议根据当前属性构成生成，不代表能力诊断。", sorted_attrs.first().map(|a| a.attribute.name.as_str()).unwrap_or("弱项"))
             }))
         }
         "soloup_project_create" => {
             let mut a = args_with_actor.clone();
-            if let Some(v) = a.get("start_date").cloned() { a["startDate"] = v; }
-            if let Some(v) = a.get("end_date").cloned() { a["endDate"] = v; }
-            dispatch(&mut *solver, op, &a).map_err(|e| ToolError { code: e.code, message: e.message })
-        }
-        "soloup_project_update" => {
-            let mut a = args_with_actor.clone();
-            if let Some(v) = a.get("start_date").cloned() { a["startDate"] = v; }
-            if let Some(v) = a.get("end_date").cloned() { a["endDate"] = v; }
-            dispatch(&mut *solver, op, &a).map_err(|e| ToolError { code: e.code, message: e.message })
-        }
-        "soloup_checkin_set" => {
-            let mut a = args_with_actor.clone();
-            if let Some(v) = a.get("skill_ids").cloned() { a["skillIds"] = v; }
-            if let Some(v) = a.get("project_id").cloned() { a["projectId"] = v; }
-            dispatch(&mut *solver, op, &a).map_err(|e| ToolError { code: e.code, message: e.message })
-        }
-        "soloup_life_save" => {
-            let mut a = args_with_actor.clone();
-            if let Some(v) = a.get("life_expectancy").cloned() { a["expectancy"] = v; }
-            dispatch(&mut *solver, op, &a).map_err(|e| ToolError { code: e.code, message: e.message })
-        }
-        "soloup_profile_save" => {
-            let mut a = args_with_actor.clone();
-            if let Some(v) = a.get("remind_time").cloned() { a["remind"] = v; }
-            if let Some(v) = a.get("lock_history").cloned() { a["lockHistory"] = v; }
-            dispatch(&mut *solver, op, &a).map_err(|e| ToolError { code: e.code, message: e.message })
-        }
-        _ => {
-            dispatch(&mut *solver, op, &args_with_actor).map_err(|e| ToolError {
+            if let Some(v) = a.get("start_date").cloned() {
+                a["startDate"] = v;
+            }
+            if let Some(v) = a.get("end_date").cloned() {
+                a["endDate"] = v;
+            }
+            dispatch(&mut solver, op, &a).map_err(|e| ToolError {
                 code: e.code,
                 message: e.message,
             })
         }
+        "soloup_project_update" => {
+            let mut a = args_with_actor.clone();
+            if let Some(v) = a.get("start_date").cloned() {
+                a["startDate"] = v;
+            }
+            if let Some(v) = a.get("end_date").cloned() {
+                a["endDate"] = v;
+            }
+            dispatch(&mut solver, op, &a).map_err(|e| ToolError {
+                code: e.code,
+                message: e.message,
+            })
+        }
+        "soloup_checkin_set" => {
+            let mut a = args_with_actor.clone();
+            if let Some(v) = a.get("skill_ids").cloned() {
+                a["skillIds"] = v;
+            }
+            if let Some(v) = a.get("project_id").cloned() {
+                a["projectId"] = v;
+            }
+            dispatch(&mut solver, op, &a).map_err(|e| ToolError {
+                code: e.code,
+                message: e.message,
+            })
+        }
+        "soloup_life_save" => {
+            let mut a = args_with_actor.clone();
+            if let Some(v) = a.get("life_expectancy").cloned() {
+                a["expectancy"] = v;
+            }
+            dispatch(&mut solver, op, &a).map_err(|e| ToolError {
+                code: e.code,
+                message: e.message,
+            })
+        }
+        "soloup_profile_save" => {
+            let mut a = args_with_actor.clone();
+            if let Some(v) = a.get("remind_time").cloned() {
+                a["remind"] = v;
+            }
+            if let Some(v) = a.get("lock_history").cloned() {
+                a["lockHistory"] = v;
+            }
+            dispatch(&mut solver, op, &a).map_err(|e| ToolError {
+                code: e.code,
+                message: e.message,
+            })
+        }
+        _ => dispatch(&mut solver, op, &args_with_actor).map_err(|e| ToolError {
+            code: e.code,
+            message: e.message,
+        }),
     }
 }
 

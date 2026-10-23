@@ -90,17 +90,10 @@ pub(crate) type AppState = Arc<Mutex<Solver>>;
 fn main() {
     let args = Args::parse();
 
-    let mut store = open_store(Default::default()).expect("打开数据库失败");
+    let store = open_store(Default::default()).expect("打开数据库失败");
 
-    let seeded = store
-        .settings()
-        .get("seeded")
-        .unwrap_or(None)
-        .is_some();
-    if !seeded {
-        soloup_server::seed::seed_demo(&mut store).expect("写入演示种子失败");
-        eprintln!("[soloup-mcp] 首次启动：已写入演示种子");
-    }
+    // MCP shares the user's real database. Never seed or reset user data from
+    // a client connection; demo data must be initialized explicitly in the app.
 
     let state: AppState = Arc::new(Mutex::new(Solver::new(store)));
 
@@ -149,6 +142,11 @@ fn run_stdio(state: AppState) {
             }
         };
 
+        if request.id.is_none() {
+            // Notifications are intentionally one-way in stdio transport.
+            continue;
+        }
+
         let response = handle_request(&state, &request);
 
         writeln!(stdout_lock, "{}", serde_json::to_string(&response).unwrap()).unwrap();
@@ -161,10 +159,26 @@ fn run_stdio(state: AppState) {
 pub(crate) fn handle_request(state: &AppState, request: &JsonRpcRequest) -> JsonRpcResponse {
     let id = request.id.clone();
 
+    // JSON-RPC notifications have no id and must not receive a response.
+    if id.is_none() {
+        return JsonRpcResponse {
+            jsonrpc: "2.0".into(),
+            id: None,
+            result: None,
+            error: None,
+        };
+    }
+
     match request.method.as_str() {
         "initialize" => handle_initialize(request, id),
-        "tools/list" => handle_tools_list(id),
+        "tools/list" => handle_tools_list(id, &request.params),
         "tools/call" => handle_tools_call(state, request, id),
+        "ping" => JsonRpcResponse {
+            jsonrpc: "2.0".into(),
+            id,
+            result: Some(json!({})),
+            error: None,
+        },
         _ => JsonRpcResponse {
             jsonrpc: "2.0".into(),
             id,
@@ -213,18 +227,32 @@ fn handle_initialize(request: &JsonRpcRequest, id: Option<Value>) -> JsonRpcResp
     }
 }
 
-fn handle_tools_list(id: Option<Value>) -> JsonRpcResponse {
+fn handle_tools_list(id: Option<Value>, params: &Value) -> JsonRpcResponse {
+    let cursor = params.get("cursor").and_then(Value::as_str);
+    let tools = tools::get_tool_definitions();
+    let start = cursor
+        .and_then(|c| c.strip_prefix("offset:"))
+        .and_then(|n| n.parse::<usize>().ok())
+        .unwrap_or(0)
+        .min(tools.len());
+    let end = (start + 100).min(tools.len());
+    let mut result = json!({ "tools": &tools[start..end] });
+    if end < tools.len() {
+        result["nextCursor"] = json!(format!("offset:{end}"));
+    }
     JsonRpcResponse {
         jsonrpc: "2.0".into(),
         id,
-        result: Some(json!({
-            "tools": tools::get_tool_definitions()
-        })),
+        result: Some(result),
         error: None,
     }
 }
 
-fn handle_tools_call(state: &AppState, request: &JsonRpcRequest, id: Option<Value>) -> JsonRpcResponse {
+fn handle_tools_call(
+    state: &AppState,
+    request: &JsonRpcRequest,
+    id: Option<Value>,
+) -> JsonRpcResponse {
     let params: ToolCallParams = match serde_json::from_value(request.params.clone()) {
         Ok(p) => p,
         Err(e) => {

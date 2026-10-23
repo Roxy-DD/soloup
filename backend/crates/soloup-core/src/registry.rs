@@ -362,7 +362,15 @@ pub fn remove_override_key(overrides: &ParamOverrides, key: &str) -> ParamOverri
                     "base_value" => a.base_value = None,
                     _ => return out,
                 }
-                out.attr_defaults = if a.alpha.is_none() && a.w0.is_none() && a.max_value.is_none() && a.base_value.is_none() { None } else { Some(a) };
+                out.attr_defaults = if a.alpha.is_none()
+                    && a.w0.is_none()
+                    && a.max_value.is_none()
+                    && a.base_value.is_none()
+                {
+                    None
+                } else {
+                    Some(a)
+                };
             }
         }
         ParamRoot::Category => {
@@ -374,7 +382,11 @@ pub fn remove_override_key(overrides: &ParamOverrides, key: &str) -> ParamOverri
                         "f" => r.f = None,
                         _ => return out,
                     }
-                    if r.c.is_none() && r.f.is_none() { m.remove(&cat); } else { m.insert(cat, r); }
+                    if r.c.is_none() && r.f.is_none() {
+                        m.remove(&cat);
+                    } else {
+                        m.insert(cat, r);
+                    }
                 }
                 out.category = if m.is_empty() { None } else { Some(m) };
             }
@@ -389,7 +401,11 @@ pub fn remove_override_key(overrides: &ParamOverrides, key: &str) -> ParamOverri
                         "x0" => r.x0 = None,
                         _ => return out,
                     }
-                    if r.lambda.is_none() && r.k.is_none() && r.x0.is_none() { m.remove(&cat); } else { m.insert(cat, r); }
+                    if r.lambda.is_none() && r.k.is_none() && r.x0.is_none() {
+                        m.remove(&cat);
+                    } else {
+                        m.insert(cat, r);
+                    }
                 }
                 out.curve = if m.is_empty() { None } else { Some(m) };
             }

@@ -56,7 +56,9 @@ fn skill_tree_create_child_and_cycle_detection() {
     let skills = s.skills();
     skills.create(&skill("art", "艺术", None)).unwrap();
     skills.create(&skill("paint", "绘画", Some("art"))).unwrap();
-    skills.create(&skill("sketch", "素描", Some("paint"))).unwrap();
+    skills
+        .create(&skill("sketch", "素描", Some("paint")))
+        .unwrap();
 
     // 子技能 → 孙
     assert_eq!(skills.children_of("art").unwrap().len(), 1);
@@ -71,12 +73,18 @@ fn skill_tree_create_child_and_cycle_detection() {
     // 把自己设为父级 → 拒绝
     let mut selfmove = skills.get("art").unwrap().unwrap();
     selfmove.parent_id = Some("art".to_string());
-    assert_eq!(skills.update(&selfmove).unwrap_err().code, StoreErrorCode::Cycle);
+    assert_eq!(
+        skills.update(&selfmove).unwrap_err().code,
+        StoreErrorCode::Cycle
+    );
 
     // 移到不存在的父 → NotFound
     let mut bad = skills.get("art").unwrap().unwrap();
     bad.parent_id = Some("nope".to_string());
-    assert_eq!(skills.update(&bad).unwrap_err().code, StoreErrorCode::NotFound);
+    assert_eq!(
+        skills.update(&bad).unwrap_err().code,
+        StoreErrorCode::NotFound
+    );
 
     // 物理删除有子技能的父 → HasChildren
     assert_eq!(
@@ -95,8 +103,12 @@ fn daily_save_clear_and_links() {
 
     // 建树：叶子 "run"（根 art → body → run）
     s.skills().create(&skill("art", "艺术", None)).unwrap();
-    s.skills().create(&skill("body", "身体", Some("art"))).unwrap();
-    s.skills().create(&skill("run", "跑步", Some("body"))).unwrap();
+    s.skills()
+        .create(&skill("body", "身体", Some("art")))
+        .unwrap();
+    s.skills()
+        .create(&skill("run", "跑步", Some("body")))
+        .unwrap();
 
     // 属性关联只能挂叶子（body 非叶子 → Constraint）
     let tx = s.conn.transaction().unwrap();
@@ -153,11 +165,20 @@ fn daily_save_clear_and_links() {
     assert_eq!(s.daily().skill_ids_on("2026-01-01").unwrap(), vec!["run"]);
 
     // 有打卡历史的叶子物理删除 → HasHistory
-    assert_eq!(s.skills().delete("run").unwrap_err().code, StoreErrorCode::HasHistory);
+    assert_eq!(
+        s.skills().delete("run").unwrap_err().code,
+        StoreErrorCode::HasHistory
+    );
 
     // 归档后 list 只含未归档（art + body = 2）
     s.skills().archive("run", None).unwrap();
-    assert_eq!(s.skills().get("run").unwrap().unwrap().archived_at.is_some(), true);
+    assert!(s
+        .skills()
+        .get("run")
+        .unwrap()
+        .unwrap()
+        .archived_at
+        .is_some());
     assert_eq!(s.skills().list().unwrap().len(), 2);
 
     // 清空打卡后再删除

@@ -17,9 +17,9 @@ pub struct AttributeRepo<'a> {
 fn opt_enum<E: DbEnum>(s: Option<String>) -> Result<Option<E>, StoreError> {
     match s {
         None => Ok(None),
-        Some(v) => E::parse(&v).map(Some).ok_or_else(|| {
-            StoreError::new(StoreErrorCode::Validation, format!("非法枚举值：{v}"))
-        }),
+        Some(v) => E::parse(&v)
+            .map(Some)
+            .ok_or_else(|| StoreError::new(StoreErrorCode::Validation, format!("非法枚举值：{v}"))),
     }
 }
 
@@ -60,13 +60,15 @@ impl AttributeRepo<'_> {
     /// 插入（id 为空则生成 UUID）。返回落库行。
     pub fn create(&self, a: &Attribute) -> Result<Attribute, StoreError> {
         let row = Attribute {
-            id: if a.id.is_empty() { generate_id() } else { a.id.clone() },
+            id: if a.id.is_empty() {
+                generate_id()
+            } else {
+                a.id.clone()
+            },
             ..a.clone()
         };
         self.db.execute(
-            &format!(
-                "INSERT INTO attributes ({COLS}) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11)"
-            ),
+            &format!("INSERT INTO attributes ({COLS}) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11)"),
             params![
                 row.id,
                 row.name,
@@ -111,20 +113,19 @@ impl AttributeRepo<'_> {
 
     /// 物理删除；仍被技能关联时拒绝（ERR_LINKED）。
     pub fn delete(&self, id: &str) -> Result<(), StoreError> {
-        let linked: i64 = self
-            .db
-            .query_row(
-                "SELECT COUNT(*) AS n FROM skill_attributes WHERE attribute_id = ?",
-                params![id],
-                |r| r.get(0),
-            )?;
+        let linked: i64 = self.db.query_row(
+            "SELECT COUNT(*) AS n FROM skill_attributes WHERE attribute_id = ?",
+            params![id],
+            |r| r.get(0),
+        )?;
         if linked > 0 {
             return Err(StoreError::constraint(
                 StoreErrorCode::Linked,
                 format!("属性 {id} 仍被 {linked} 个技能关联，请先解除关联再删除"),
             ));
         }
-        self.db.execute("DELETE FROM attributes WHERE id = ?", params![id])?;
+        self.db
+            .execute("DELETE FROM attributes WHERE id = ?", params![id])?;
         Ok(())
     }
 }

@@ -43,7 +43,11 @@ fn resolve_path(path: Option<&str>) -> String {
     let home = env::var("USERPROFILE")
         .or_else(|_| env::var("HOME"))
         .unwrap_or_else(|_| ".".to_string());
-    Path::new(&home).join(".soloup").join("soloup.db").to_string_lossy().to_string()
+    Path::new(&home)
+        .join(".soloup")
+        .join("soloup.db")
+        .to_string_lossy()
+        .to_string()
 }
 
 fn open_connection(path: &str) -> Result<Connection, StoreError> {
@@ -76,7 +80,9 @@ fn backup_dir_of(db_path: &str) -> Option<std::path::PathBuf> {
     if db_path == ":memory:" {
         return None;
     }
-    let parent = Path::new(db_path).parent().filter(|p| !p.as_os_str().is_empty())?;
+    let parent = Path::new(db_path)
+        .parent()
+        .filter(|p| !p.as_os_str().is_empty())?;
     Some(parent.join("backups"))
 }
 
@@ -108,7 +114,9 @@ fn backup_before_migrate(
     if skip {
         return Ok(None);
     }
-    let Some(dir) = backup_dir_of(db_path) else { return Ok(None) };
+    let Some(dir) = backup_dir_of(db_path) else {
+        return Ok(None);
+    };
     let hint = format!("（可用 {SKIP_BACKUP_ENV}=1 跳过备份）");
 
     std::fs::create_dir_all(&dir).map_err(|e| {
@@ -125,13 +133,16 @@ fn backup_before_migrate(
         return Ok(Some(file));
     }
 
-    conn.execute_batch(&format!("VACUUM INTO '{}'", sql_quote(&file.to_string_lossy())))
-        .map_err(|e| {
-            StoreError::new(
-                StoreErrorCode::BackupFailed,
-                format!("迁移前备份失败 {}：{e} {hint}", file.display()),
-            )
-        })?;
+    conn.execute_batch(&format!(
+        "VACUUM INTO '{}'",
+        sql_quote(&file.to_string_lossy())
+    ))
+    .map_err(|e| {
+        StoreError::new(
+            StoreErrorCode::BackupFailed,
+            format!("迁移前备份失败 {}：{e} {hint}", file.display()),
+        )
+    })?;
     prune_backups(&dir);
     Ok(Some(file))
 }
@@ -139,7 +150,9 @@ fn backup_before_migrate(
 /// 只保留最近 `BACKUP_KEEP` 份快照。只认本程序自己产出的命名（`soloup-<时间戳>-v<n>.db`），
 /// 目录里其他文件一律不碰。
 fn prune_backups(dir: &Path) {
-    let Ok(entries) = std::fs::read_dir(dir) else { return };
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return;
+    };
     let mut ours: Vec<std::path::PathBuf> = entries
         .flatten()
         .map(|e| e.path())
@@ -234,14 +247,9 @@ impl Store {
     }
 }
 
+#[derive(Default)]
 pub struct OpenStoreOptions {
     pub path: Option<String>,
-}
-
-impl Default for OpenStoreOptions {
-    fn default() -> Self {
-        Self { path: None }
-    }
 }
 
 /// 打开（并自动迁移到最新 schema）数据库，返回 Store 门面。

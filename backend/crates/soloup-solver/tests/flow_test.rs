@@ -59,20 +59,27 @@ fn continuous_100_days_matches_golden() {
         })
         .unwrap();
 
-    store.skills().create(&skill("tech", "技术", None, D0)).unwrap();
-    store.skills().create(&skill("fe", "前端", Some("tech"), D0)).unwrap();
+    store
+        .skills()
+        .create(&skill("tech", "技术", None, D0))
+        .unwrap();
+    store
+        .skills()
+        .create(&skill("fe", "前端", Some("tech"), D0))
+        .unwrap();
 
     // fe ↔ 智力 关联
-    store.tx(|c| {
-        soloup_store::links::LinkRepo { db: c }.set_for_skill(
-            "fe",
-            &[soloup_store::links::SkillLinkInput {
-                attribute_id: vit.id.clone(),
-                weight: 1.0,
-            }],
-        )
-    })
-    .unwrap();
+    store
+        .tx(|c| {
+            soloup_store::links::LinkRepo { db: c }.set_for_skill(
+                "fe",
+                &[soloup_store::links::SkillLinkInput {
+                    attribute_id: vit.id.clone(),
+                    weight: 1.0,
+                }],
+            )
+        })
+        .unwrap();
 
     // 100 天每天打卡 fe（2026-01-01 .. 2026-04-10）
     let mut solver = Solver::with_now(store, NaiveDate::from_ymd_opt(2026, 4, 10).unwrap());
@@ -107,11 +114,19 @@ fn continuous_100_days_matches_golden() {
 
     // snapshot：fe 叶子等级 round2 == 10.84；智力属性有派生值
     let snap = solver.snapshot(None).unwrap();
-    let fe = snap.leaves.iter().find(|l| l.skill.id == "fe").expect("fe leaf");
+    let fe = snap
+        .leaves
+        .iter()
+        .find(|l| l.skill.id == "fe")
+        .expect("fe leaf");
     let r2 = (fe.level * 100.0).round() / 100.0;
     assert_eq!(r2, 10.84);
 
-    let int = snap.attributes.iter().find(|a| a.attribute.id == vit.id).unwrap();
+    let int = snap
+        .attributes
+        .iter()
+        .find(|a| a.attribute.id == vit.id)
+        .unwrap();
     assert!(int.value > 0.0);
     assert_eq!(int.entries.len(), 1);
 }

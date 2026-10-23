@@ -120,7 +120,7 @@ export function SkillDrawer({
       return;
     }
     dispatch({ type: 'SKILL_ADD', parentIdPath: pv, name: v, attrIds });
-    toast(`已创建「${v}」· 熟练度从见习Ⅰ开始`);
+    toast(`已创建「${v}」· 游戏化进度从见习Ⅰ开始`);
     setSeq(seq + 1);
     close();
   };

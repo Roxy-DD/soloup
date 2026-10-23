@@ -13,7 +13,10 @@ use crate::params::effective_skill_params;
 
 /// 叶子等级 = ℓ(c+v)（按生效曲线）。
 pub fn leaf_level(skill: &Skill, overrides: &ParamOverrides) -> f64 {
-    level_of(skill.c + skill.v, &effective_skill_params(skill, overrides).curve)
+    level_of(
+        skill.c + skill.v,
+        &effective_skill_params(skill, overrides).curve,
+    )
 }
 
 struct LevelMap<'a> {
@@ -72,7 +75,10 @@ pub fn effective_attribute_params(
     attribute: &Attribute,
     overrides: &ParamOverrides,
 ) -> AttributeParams {
-    let o = overrides.attribute.as_ref().and_then(|m| m.get(&attribute.id));
+    let o = overrides
+        .attribute
+        .as_ref()
+        .and_then(|m| m.get(&attribute.id));
     AttributeParams {
         base_value: o.and_then(|x| x.base_value).unwrap_or(attribute.base_value),
         max_value: o.and_then(|x| x.max_value).unwrap_or(attribute.max_value),
@@ -212,17 +218,36 @@ pub fn build_snapshot(input: &SnapshotInput) -> DerivedSnapshot {
         .map(|a| {
             derive_attribute(
                 a,
-                input.links_by_attribute.get(&a.id).map(|v| v.as_slice()).unwrap_or(&[]),
+                input
+                    .links_by_attribute
+                    .get(&a.id)
+                    .map(|v| v.as_slice())
+                    .unwrap_or(&[]),
                 &levels,
                 input.overrides,
             )
         })
         .collect();
 
-    leaves.sort_by(|a, b| b.level.partial_cmp(&a.level).unwrap_or(std::cmp::Ordering::Equal).then_with(|| a.skill.name.cmp(&b.skill.name)));
-    parents.sort_by(|a, b| b.level.partial_cmp(&a.level).unwrap_or(std::cmp::Ordering::Equal).then_with(|| a.skill.name.cmp(&b.skill.name)));
+    leaves.sort_by(|a, b| {
+        b.level
+            .partial_cmp(&a.level)
+            .unwrap_or(std::cmp::Ordering::Equal)
+            .then_with(|| a.skill.name.cmp(&b.skill.name))
+    });
+    parents.sort_by(|a, b| {
+        b.level
+            .partial_cmp(&a.level)
+            .unwrap_or(std::cmp::Ordering::Equal)
+            .then_with(|| a.skill.name.cmp(&b.skill.name))
+    });
     let mut attributes = attributes;
-    attributes.sort_by(|a, b| b.value.partial_cmp(&a.value).unwrap_or(std::cmp::Ordering::Equal).then_with(|| a.attribute.name.cmp(&b.attribute.name)));
+    attributes.sort_by(|a, b| {
+        b.value
+            .partial_cmp(&a.value)
+            .unwrap_or(std::cmp::Ordering::Equal)
+            .then_with(|| a.attribute.name.cmp(&b.attribute.name))
+    });
 
     DerivedSnapshot {
         date: input.date.clone(),

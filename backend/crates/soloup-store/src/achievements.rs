@@ -22,13 +22,18 @@ fn from_row(row: &Row) -> rusqlite::Result<Achievement> {
         id: row.get(0)?,
         name: row.get(1)?,
         description: row.get(2)?,
-        condition_json: cond_text.as_deref().and_then(|s| serde_json::from_str(s).ok()),
+        condition_json: cond_text
+            .as_deref()
+            .and_then(|s| serde_json::from_str(s).ok()),
         r#type: AchievementType::parse(&r#type).unwrap_or(AchievementType::Milestone),
         rarity: Rarity::parse(&rarity).unwrap_or(Rarity::Common),
         points: row.get(6)?,
         unlocked_at: row.get(7)?,
         hidden: hidden_i != 0,
-        requires: req_text.as_deref().and_then(|s| serde_json::from_str::<Vec<String>>(s).ok()).unwrap_or_default(),
+        requires: req_text
+            .as_deref()
+            .and_then(|s| serde_json::from_str::<Vec<String>>(s).ok())
+            .unwrap_or_default(),
         reveal_at: row.get(10)?,
     })
 }
@@ -108,7 +113,8 @@ impl AchievementRepo<'_> {
     }
 
     pub fn delete(&self, id: &str) -> Result<(), StoreError> {
-        self.db.execute("DELETE FROM achievements WHERE id = ?1", params![id])?;
+        self.db
+            .execute("DELETE FROM achievements WHERE id = ?1", params![id])?;
         Ok(())
     }
 }

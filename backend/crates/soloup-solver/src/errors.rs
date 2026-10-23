@@ -63,15 +63,16 @@ impl From<soloup_store::StoreError> for SolverError {
 
 impl From<rusqlite::Error> for SolverError {
     fn from(e: rusqlite::Error) -> Self {
-        SolverError::new(
-            SolverErrorCode::Validation,
-            format!("数据库错误：{e}"),
-        )
+        SolverError::new(SolverErrorCode::Validation, format!("数据库错误：{e}"))
     }
 }
 
 /// 防呆断言：condition 不满足即抛服务层错误。
-pub fn solver_assert(condition: bool, code: SolverErrorCode, message: impl Into<String>) -> Result<(), SolverError> {
+pub fn solver_assert(
+    condition: bool,
+    code: SolverErrorCode,
+    message: impl Into<String>,
+) -> Result<(), SolverError> {
     if condition {
         Ok(())
     } else {

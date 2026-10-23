@@ -10,7 +10,7 @@ use chrono::Datelike;
 use serde_json::{json, Value};
 
 use soloup_core::dates::{add_days, today_iso};
-use soloup_core::schema::{AuditActor, DbEnum, Project, ProjectStatus, Skill};
+use soloup_core::schema::{Achievement, AuditActor, DbEnum, Project, ProjectStatus, Skill};
 use soloup_solver::service::{CheckinInput, MutationKind, Solver};
 use soloup_solver::SolverError;
 use soloup_store::links::SkillLinkInput;
@@ -59,14 +59,13 @@ fn arr(a: Args, k: &str) -> Vec<Value> {
         .unwrap_or_default()
 }
 fn req_str(a: Args, k: &str) -> Result<String, RpcError> {
-    s(a, k)
-        .map(|x| x.to_string())
-        .ok_or_else(|| RpcError { code: "ERR_VALIDATION".into(), message: format!("缺少参数 {k}") })
+    s(a, k).map(|x| x.to_string()).ok_or_else(|| RpcError {
+        code: "ERR_VALIDATION".into(),
+        message: format!("缺少参数 {k}"),
+    })
 }
 fn opt_string(a: Args, k: &str) -> Option<Option<String>> {
-    if a.get(k).is_none() {
-        return None;
-    }
+    a.get(k)?;
     Some(a.get(k).and_then(|v| v.as_str()).map(|x| x.to_string()))
 }
 
@@ -253,10 +252,21 @@ pub fn dispatch(solver: &mut Solver, op: &str, args: &Value) -> Result<Value, Rp
                 if !ls.is_empty() {
                     link_map.insert(
                         s.id.clone(),
-                        ls.iter().map(|l| (l.attribute_id.clone(), l.weight)).collect(),
+                        ls.iter()
+                            .map(|l| (l.attribute_id.clone(), l.weight))
+                            .collect(),
                     );
                 }
             }
+            let parent_ids: HashSet<String> = skills
+                .iter()
+                .filter_map(|skill| skill.parent_id.clone())
+                .collect();
+            let branch_ids: HashSet<String> = skills
+                .iter()
+                .filter(|skill| parent_ids.contains(&skill.id) || !link_map.contains_key(&skill.id))
+                .map(|skill| skill.id.clone())
+                .collect();
             // 累计打卡天数：前端「×N 次」直接用这个真实计数，
             // 不再从派生等级反推（反推值会随曲线放大成无意义的数量级）。
             let mut checkin_map: HashMap<String, i64> = HashMap::new();
@@ -271,11 +281,12 @@ pub fn dispatch(solver: &mut Solver, op: &str, args: &Value) -> Result<Value, Rp
                 levels: &HashMap<String, f64>,
                 links: &HashMap<String, Vec<(String, f64)>>,
                 checkins: &HashMap<String, i64>,
+                branch_ids: &HashSet<String>,
             ) -> Vec<Value> {
                 let mut out = Vec::new();
                 for s in skills.iter().filter(|x| x.parent_id.as_deref() == parent) {
-                    let kids = build(skills, Some(&s.id), levels, links, checkins);
-                    let leaf = !s.is_branch && kids.is_empty();
+                    let kids = build(skills, Some(&s.id), levels, links, checkins, branch_ids);
+                    let leaf = !branch_ids.contains(&s.id) && kids.is_empty();
                     let attrs: Vec<Value> = links
                         .get(&s.id)
                         .map(|v| v.iter().map(|(a, w)| json!([a, w])).collect())
@@ -292,7 +303,14 @@ pub fn dispatch(solver: &mut Solver, op: &str, args: &Value) -> Result<Value, Rp
                 }
                 out
             }
-            Ok(json!(build(&skills, None, &levels, &link_map, &checkin_map)))
+            Ok(json!(build(
+                &skills,
+                None,
+                &levels,
+                &link_map,
+                &checkin_map,
+                &branch_ids
+            )))
         }
 
         "attributes" => {
@@ -321,7 +339,7 @@ pub fn dispatch(solver: &mut Solver, op: &str, args: &Value) -> Result<Value, Rp
                 let ids = solver.store.daily().skill_ids_on(&r.date)?;
                 out.push(json!({
                     "date": r.date,
-                    "skillIds": ids.iter().cloned().collect::<Vec<_>>(),
+                    "skillIds": ids.to_vec(),
                     "attrsLit": lit_attrs_of(&ids, &skill_to_attrs),
                     "projectId": r.project_id, "note": r.note
                 }));
@@ -330,7 +348,9 @@ pub fn dispatch(solver: &mut Solver, op: &str, args: &Value) -> Result<Value, Rp
         }
 
         "checkin" => {
-            let date = s(args, "date").map(|x| x.to_string()).unwrap_or_else(today_iso);
+            let date = s(args, "date")
+                .map(|x| x.to_string())
+                .unwrap_or_else(today_iso);
             let ids: Vec<String> = arr(args, "skillIds")
                 .into_iter()
                 .chain(arr(args, "skill_ids"))
@@ -356,11 +376,15 @@ pub fn dispatch(solver: &mut Solver, op: &str, args: &Value) -> Result<Value, Rp
         }
 
         "checkin.clear" => {
-            let date = s(args, "date").map(|x| x.to_string()).unwrap_or_else(today_iso);
-            solver.store.tx(|c| -> Result<(), soloup_store::StoreError> {
-                soloup_store::daily::DailyRepo { db: c }.clear(&date)?;
-                Ok(())
-            })?;
+            let date = s(args, "date")
+                .map(|x| x.to_string())
+                .unwrap_or_else(today_iso);
+            solver
+                .store
+                .tx(|c| -> Result<(), soloup_store::StoreError> {
+                    soloup_store::daily::DailyRepo { db: c }.clear(&date)?;
+                    Ok(())
+                })?;
             let _ = solver.settle_all()?;
             Ok(json!({ "ok": true }))
         }
@@ -368,14 +392,20 @@ pub fn dispatch(solver: &mut Solver, op: &str, args: &Value) -> Result<Value, Rp
         "skill.create" => {
             let name = req_str(args, "name")?;
             let cat = soloup_core::schema::SkillCategory::parse(&req_str(args, "category")?)
-                .ok_or_else(|| RpcError { code: "ERR_VALIDATION".into(), message: "非法 category".into() })?;
-            let diff = s(args, "difficulty")
-                .and_then(soloup_core::schema::Difficulty::parse);
+                .ok_or_else(|| RpcError {
+                    code: "ERR_VALIDATION".into(),
+                    message: "非法 category".into(),
+                })?;
+            let diff = s(args, "difficulty").and_then(soloup_core::schema::Difficulty::parse);
             let links: Vec<SkillLinkInput> = arr(args, "links")
                 .into_iter()
                 .filter_map(|v| {
                     Some(SkillLinkInput {
-                        attribute_id: v.get("attributeId").or(v.get("attribute_id"))?.as_str()?.to_string(),
+                        attribute_id: v
+                            .get("attributeId")
+                            .or(v.get("attribute_id"))?
+                            .as_str()?
+                            .to_string(),
                         weight: v.get("weight").and_then(|w| w.as_f64()).unwrap_or(1.0),
                     })
                 })
@@ -384,7 +414,9 @@ pub fn dispatch(solver: &mut Solver, op: &str, args: &Value) -> Result<Value, Rp
                 MutationKind::SkillCreate {
                     name,
                     category: cat,
-                    parent_id: s(args, "parentId").or(s(args, "parent_id")).map(|x| x.to_string()),
+                    parent_id: s(args, "parentId")
+                        .or(s(args, "parent_id"))
+                        .map(|x| x.to_string()),
                     difficulty: diff,
                     is_branch: b(args, "isBranch") || b(args, "is_branch"),
                     links,
@@ -396,14 +428,22 @@ pub fn dispatch(solver: &mut Solver, op: &str, args: &Value) -> Result<Value, Rp
 
         "skill.updateProfile" | "skill.update" => {
             let id = req_str(args, "id")?;
-            let cat = s(args, "category").map(|c| {
-                soloup_core::schema::SkillCategory::parse(c)
-                    .ok_or_else(|| RpcError { code: "ERR_VALIDATION".into(), message: "非法 category".into() })
-            }).transpose()?;
-            let diff = s(args, "difficulty").map(|c| {
-                soloup_core::schema::Difficulty::parse(c)
-                    .ok_or_else(|| RpcError { code: "ERR_VALIDATION".into(), message: "非法 difficulty".into() })
-            }).transpose()?;
+            let cat = s(args, "category")
+                .map(|c| {
+                    soloup_core::schema::SkillCategory::parse(c).ok_or_else(|| RpcError {
+                        code: "ERR_VALIDATION".into(),
+                        message: "非法 category".into(),
+                    })
+                })
+                .transpose()?;
+            let diff = s(args, "difficulty")
+                .map(|c| {
+                    soloup_core::schema::Difficulty::parse(c).ok_or_else(|| RpcError {
+                        code: "ERR_VALIDATION".into(),
+                        message: "非法 difficulty".into(),
+                    })
+                })
+                .transpose()?;
             let ct = if args.get("curveType").is_some() || args.get("curve_type").is_some() {
                 let raw = s(args, "curveType").or(s(args, "curve_type"));
                 Some(raw.and_then(soloup_core::schema::CurveType::parse))
@@ -415,11 +455,13 @@ pub fn dispatch(solver: &mut Solver, op: &str, args: &Value) -> Result<Value, Rp
                     id,
                     name: s(args, "name").map(|x| x.to_string()),
                     description: opt_string(args, "description"),
-                    parent_id: opt_string(args, "parentId").or_else(|| opt_string(args, "parent_id")),
+                    parent_id: opt_string(args, "parentId")
+                        .or_else(|| opt_string(args, "parent_id")),
                     category: cat,
                     difficulty: diff,
                     curve_type: ct,
-                    is_branch: if args.get("isBranch").is_some() || args.get("is_branch").is_some() {
+                    is_branch: if args.get("isBranch").is_some() || args.get("is_branch").is_some()
+                    {
                         Some(b(args, "isBranch") || b(args, "is_branch"))
                     } else {
                         None
@@ -434,22 +476,39 @@ pub fn dispatch(solver: &mut Solver, op: &str, args: &Value) -> Result<Value, Rp
             let res = solver.mutate(
                 MutationKind::SkillMove {
                     id: req_str(args, "id")?,
-                    parent_id: s(args, "parentId").or(s(args, "parent_id")).map(|x| x.to_string()),
+                    parent_id: s(args, "parentId")
+                        .or(s(args, "parent_id"))
+                        .map(|x| x.to_string()),
                 },
                 actor_of(args),
             )?;
             Ok(res.detail)
         }
         "skill.archive" => {
-            let res = solver.mutate(MutationKind::SkillArchive { id: req_str(args, "id")? }, actor_of(args))?;
+            let res = solver.mutate(
+                MutationKind::SkillArchive {
+                    id: req_str(args, "id")?,
+                },
+                actor_of(args),
+            )?;
             Ok(res.detail)
         }
         "skill.restore" => {
-            let res = solver.mutate(MutationKind::SkillRestore { id: req_str(args, "id")? }, actor_of(args))?;
+            let res = solver.mutate(
+                MutationKind::SkillRestore {
+                    id: req_str(args, "id")?,
+                },
+                actor_of(args),
+            )?;
             Ok(res.detail)
         }
         "skill.delete" | "skill.remove" => {
-            let res = solver.mutate(MutationKind::SkillDelete { id: req_str(args, "id")? }, actor_of(args))?;
+            let res = solver.mutate(
+                MutationKind::SkillDelete {
+                    id: req_str(args, "id")?,
+                },
+                actor_of(args),
+            )?;
             Ok(res.detail)
         }
         "skill.linkSet" => {
@@ -457,13 +516,20 @@ pub fn dispatch(solver: &mut Solver, op: &str, args: &Value) -> Result<Value, Rp
                 .into_iter()
                 .filter_map(|v| {
                     Some(SkillLinkInput {
-                        attribute_id: v.get("attributeId").or(v.get("attribute_id"))?.as_str()?.to_string(),
+                        attribute_id: v
+                            .get("attributeId")
+                            .or(v.get("attribute_id"))?
+                            .as_str()?
+                            .to_string(),
                         weight: v.get("weight").and_then(|w| w.as_f64()).unwrap_or(1.0),
                     })
                 })
                 .collect();
             let res = solver.mutate(
-                MutationKind::SkillLinkSet { id: req_str(args, "id")?, links },
+                MutationKind::SkillLinkSet {
+                    id: req_str(args, "id")?,
+                    links,
+                },
                 actor_of(args),
             )?;
             Ok(res.detail)
@@ -471,18 +537,22 @@ pub fn dispatch(solver: &mut Solver, op: &str, args: &Value) -> Result<Value, Rp
 
         "skillDetail" => {
             let id = req_str(args, "id")?;
-            let skill = solver
-                .store
-                .skills()
-                .get(&id)?
-                .ok_or_else(|| RpcError { code: "ERR_NOT_FOUND".into(), message: format!("技能不存在：{id}") })?;
+            let skill = solver.store.skills().get(&id)?.ok_or_else(|| RpcError {
+                code: "ERR_NOT_FOUND".into(),
+                message: format!("技能不存在：{id}"),
+            })?;
             let snap = solver.snapshot(None)?;
             let level = snap
                 .leaves
                 .iter()
                 .find(|l| l.skill.id == id)
                 .map(|l| l.level)
-                .or_else(|| snap.parents.iter().find(|p| p.skill.id == id).map(|p| p.level))
+                .or_else(|| {
+                    snap.parents
+                        .iter()
+                        .find(|p| p.skill.id == id)
+                        .map(|p| p.level)
+                })
                 .unwrap_or(0.0);
             let links = solver.store.links().list_for_skill(&id)?;
             Ok(json!({
@@ -497,10 +567,14 @@ pub fn dispatch(solver: &mut Solver, op: &str, args: &Value) -> Result<Value, Rp
         }
 
         "attribute.create" => {
-            let cat = s(args, "category").map(|c| {
-                soloup_core::schema::AttributeCategory::parse(c)
-                    .ok_or_else(|| RpcError { code: "ERR_VALIDATION".into(), message: "非法 category".into() })
-            }).transpose()?;
+            let cat = s(args, "category")
+                .map(|c| {
+                    soloup_core::schema::AttributeCategory::parse(c).ok_or_else(|| RpcError {
+                        code: "ERR_VALIDATION".into(),
+                        message: "非法 category".into(),
+                    })
+                })
+                .transpose()?;
             let res = solver.mutate(
                 MutationKind::AttributeCreate {
                     name: req_str(args, "name")?,
@@ -539,7 +613,12 @@ pub fn dispatch(solver: &mut Solver, op: &str, args: &Value) -> Result<Value, Rp
             Ok(res.detail)
         }
         "attribute.delete" => {
-            let res = solver.mutate(MutationKind::AttributeDelete { id: req_str(args, "id")? }, actor_of(args))?;
+            let res = solver.mutate(
+                MutationKind::AttributeDelete {
+                    id: req_str(args, "id")?,
+                },
+                actor_of(args),
+            )?;
             Ok(res.detail)
         }
 
@@ -561,12 +640,15 @@ pub fn dispatch(solver: &mut Solver, op: &str, args: &Value) -> Result<Value, Rp
 
         "param.preview" | "param.set" => {
             let key = req_str(args, "key")?;
-            let value = f(args, "value")
-                .ok_or_else(|| RpcError { code: "ERR_VALIDATION".into(), message: "缺少 value".into() })?;
-            let entry = soloup_core::registry::find_registry_entry(&key).ok_or_else(|| RpcError {
-                code: "ERR_UNKNOWN_PARAM".into(),
-                message: format!("未知参数：{key}"),
+            let value = f(args, "value").ok_or_else(|| RpcError {
+                code: "ERR_VALIDATION".into(),
+                message: "缺少 value".into(),
             })?;
+            let entry =
+                soloup_core::registry::find_registry_entry(&key).ok_or_else(|| RpcError {
+                    code: "ERR_UNKNOWN_PARAM".into(),
+                    message: format!("未知参数：{key}"),
+                })?;
             if !soloup_core::registry::value_in_range(&entry, value) {
                 return Err(RpcError {
                     code: "ERR_PARAM_RANGE".into(),
@@ -582,7 +664,10 @@ pub fn dispatch(solver: &mut Solver, op: &str, args: &Value) -> Result<Value, Rp
                 .get_json::<soloup_core::registry::ParamOverrides>("param_overrides")?
                 .unwrap_or_default();
             overrides = soloup_core::registry::apply_override_value(&overrides, &key, value);
-            solver.store.settings().set_json("param_overrides", &serde_json::to_value(&overrides).unwrap())?;
+            solver.store.settings().set_json(
+                "param_overrides",
+                &serde_json::to_value(&overrides).unwrap(),
+            )?;
             Ok(json!({ "key": key, "value": value, "applied": true }))
         }
         "param.remove" => {
@@ -593,18 +678,24 @@ pub fn dispatch(solver: &mut Solver, op: &str, args: &Value) -> Result<Value, Rp
                 .get_json::<soloup_core::registry::ParamOverrides>("param_overrides")?
                 .unwrap_or_default();
             overrides = soloup_core::registry::remove_override_key(&overrides, &key);
-            solver.store.settings().set_json("param_overrides", &serde_json::to_value(&overrides).unwrap())?;
+            solver.store.settings().set_json(
+                "param_overrides",
+                &serde_json::to_value(&overrides).unwrap(),
+            )?;
             Ok(json!({ "key": key, "applied": true }))
         }
 
         "audit" => {
             let limit = i(args, "limit").unwrap_or(50);
-            let list = solver.store.audit().list(&soloup_store::audit::AuditQuery {
-                limit,
-                offset: i(args, "offset").unwrap_or(0),
-                actor: s(args, "actor").and_then(AuditActor::parse),
-                tool: s(args, "tool").map(|x| x.to_string()),
-            })?;
+            let list = solver
+                .store
+                .audit()
+                .list(&soloup_store::audit::AuditQuery {
+                    limit,
+                    offset: i(args, "offset").unwrap_or(0),
+                    actor: s(args, "actor").and_then(AuditActor::parse),
+                    tool: s(args, "tool").map(|x| x.to_string()),
+                })?;
             Ok(json!(list
                 .iter()
                 .map(|a| json!({
@@ -619,8 +710,15 @@ pub fn dispatch(solver: &mut Solver, op: &str, args: &Value) -> Result<Value, Rp
                 .settings()
                 .get_json::<Value>("life_axis")?
                 .unwrap_or_else(|| json!({ "born": "2002-05-20", "expectancy": 120 }));
-            let born = axis.get("born").and_then(|v| v.as_str()).unwrap_or("2002-05-20").to_string();
-            let exp = axis.get("expectancy").and_then(|v| v.as_f64()).unwrap_or(120.0);
+            let born = axis
+                .get("born")
+                .and_then(|v| v.as_str())
+                .unwrap_or("2002-05-20")
+                .to_string();
+            let exp = axis
+                .get("expectancy")
+                .and_then(|v| v.as_f64())
+                .unwrap_or(120.0);
             let pct = life_pct(&born, exp);
             Ok(json!({ "born": born, "expectancy": exp, "pct": pct }))
         }
@@ -659,8 +757,13 @@ pub fn dispatch(solver: &mut Solver, op: &str, args: &Value) -> Result<Value, Rp
                 id: String::new(),
                 name: req_str(args, "name")?,
                 description: s(args, "description").map(|x| x.to_string()),
-                start_date: s(args, "start").or(s(args, "startDate")).map(|x| x.to_string()).unwrap_or_else(today_iso),
-                end_date: opt_string(args, "end").or_else(|| opt_string(args, "endDate")).flatten(),
+                start_date: s(args, "start")
+                    .or(s(args, "startDate"))
+                    .map(|x| x.to_string())
+                    .unwrap_or_else(today_iso),
+                end_date: opt_string(args, "end")
+                    .or_else(|| opt_string(args, "endDate"))
+                    .flatten(),
                 status: ProjectStatus::Active,
                 color: opt_string(args, "color").flatten(),
             };
@@ -669,12 +772,13 @@ pub fn dispatch(solver: &mut Solver, op: &str, args: &Value) -> Result<Value, Rp
         }
         "project.finish" => {
             let id = req_str(args, "id")?;
-            let end = s(args, "end").map(|x| x.to_string()).unwrap_or_else(today_iso);
-            let mut p = solver
-                .store
-                .projects()
-                .get(&id)?
-                .ok_or_else(|| RpcError { code: "ERR_NOT_FOUND".into(), message: format!("项目不存在：{id}") })?;
+            let end = s(args, "end")
+                .map(|x| x.to_string())
+                .unwrap_or_else(today_iso);
+            let mut p = solver.store.projects().get(&id)?.ok_or_else(|| RpcError {
+                code: "ERR_NOT_FOUND".into(),
+                message: format!("项目不存在：{id}"),
+            })?;
             p.status = ProjectStatus::Completed;
             p.end_date = Some(end);
             solver.store.projects().update(&p)?;
@@ -682,21 +786,32 @@ pub fn dispatch(solver: &mut Solver, op: &str, args: &Value) -> Result<Value, Rp
         }
         "project.update" => {
             let id = req_str(args, "id")?;
-            let mut p = solver
-                .store
-                .projects()
-                .get(&id)?
-                .ok_or_else(|| RpcError { code: "ERR_NOT_FOUND".into(), message: format!("项目不存在：{id}") })?;
-            if let Some(name) = s(args, "name") { p.name = name.to_string(); }
-            if let Some(desc) = opt_string(args, "description") { p.description = desc; }
-            if let Some(color) = opt_string(args, "color") { p.color = color; }
-            if let Some(start) = s(args, "start").or(s(args, "startDate")) { p.start_date = start.to_string(); }
+            let mut p = solver.store.projects().get(&id)?.ok_or_else(|| RpcError {
+                code: "ERR_NOT_FOUND".into(),
+                message: format!("项目不存在：{id}"),
+            })?;
+            if let Some(name) = s(args, "name") {
+                p.name = name.to_string();
+            }
+            if let Some(desc) = opt_string(args, "description") {
+                p.description = desc;
+            }
+            if let Some(color) = opt_string(args, "color") {
+                p.color = color;
+            }
+            if let Some(start) = s(args, "start").or(s(args, "startDate")) {
+                p.start_date = start.to_string();
+            }
             if args.get("end").is_some() || args.get("endDate").is_some() {
-                p.end_date = opt_string(args, "end").or_else(|| opt_string(args, "endDate")).flatten();
+                p.end_date = opt_string(args, "end")
+                    .or_else(|| opt_string(args, "endDate"))
+                    .flatten();
             }
             if let Some(status_str) = s(args, "status") {
-                p.status = ProjectStatus::parse(status_str)
-                    .ok_or_else(|| RpcError { code: "ERR_VALIDATION".into(), message: "非法 status".into() })?;
+                p.status = ProjectStatus::parse(status_str).ok_or_else(|| RpcError {
+                    code: "ERR_VALIDATION".into(),
+                    message: "非法 status".into(),
+                })?;
             }
             solver.store.projects().update(&p)?;
             Ok(json!({ "id": p.id, "name": p.name, "status": p.status }))
@@ -712,16 +827,41 @@ pub fn dispatch(solver: &mut Solver, op: &str, args: &Value) -> Result<Value, Rp
             let stats = dispatch(solver, "stats", &json!({}))?;
             let total_days = stats.get("totalDays").and_then(|v| v.as_i64()).unwrap_or(0);
             let streak = stats.get("streak").and_then(|v| v.as_i64()).unwrap_or(0);
-            let max_lv = stats.get("maxSkillLv").and_then(|v| v.as_f64()).unwrap_or(0.0);
-            let max_lit = stats.get("maxLitOneDay").and_then(|v| v.as_i64()).unwrap_or(0);
-            let total_attrs = stats.get("totalAttrs").and_then(|v| v.as_i64()).unwrap_or(0);
-            let done = stats.get("projectsCompleted").and_then(|v| v.as_i64()).unwrap_or(0);
-            let max_skill_checkins = stats.get("maxSkillCheckins").and_then(|v| v.as_i64()).unwrap_or(0);
-            // 全部成就统一走条件求值：内置成就的条件存放在 achievements.condition_json
-            // （首次播种见 seed.rs；老库由 V4 迁移补齐）。新增成就只需写数据，不必改这里。
-            let unlocked = |cond: &Option<Value>| {
-                eval_condition(cond, total_days, streak, max_lv, max_lit, total_attrs, done, max_skill_checkins)
-            };
+            let week_days = stats.get("weekDays").and_then(|v| v.as_i64()).unwrap_or(0);
+            let max_lv = stats
+                .get("maxSkillLv")
+                .and_then(|v| v.as_f64())
+                .unwrap_or(0.0);
+            let max_lit = stats
+                .get("maxLitOneDay")
+                .and_then(|v| v.as_i64())
+                .unwrap_or(0);
+            let total_attrs = stats
+                .get("totalAttrs")
+                .and_then(|v| v.as_i64())
+                .unwrap_or(0);
+            let done = stats
+                .get("projectsCompleted")
+                .and_then(|v| v.as_i64())
+                .unwrap_or(0);
+            let max_skill_checkins = stats
+                .get("maxSkillCheckins")
+                .and_then(|v| v.as_i64())
+                .unwrap_or(0);
+            let stat_values = HashMap::from([
+                ("totalDays".to_string(), total_days as f64),
+                ("streak".to_string(), streak as f64),
+                ("weekDays".to_string(), week_days as f64),
+                ("maxSkillLv".to_string(), max_lv),
+                ("maxLitOneDay".to_string(), max_lit as f64),
+                ("totalAttrs".to_string(), total_attrs as f64),
+                ("projectsCompleted".to_string(), done as f64),
+                ("maxSkillCheckins".to_string(), max_skill_checkins as f64),
+            ]);
+            // 条件与 requires 前置链都满足后才解锁。反复扩展集合可支持任意顺序的依赖链；
+            // 未知依赖和循环依赖不会被解锁。
+            let unlocked_ids =
+                resolve_unlocked_achievements(&list, |cond| eval_condition(cond, &stat_values));
             Ok(json!(list
                 .iter()
                 .map(|a| json!({
@@ -729,28 +869,57 @@ pub fn dispatch(solver: &mut Solver, op: &str, args: &Value) -> Result<Value, Rp
                     "type": a.r#type, "rarity": a.rarity, "points": a.points,
                     "condition": a.condition_json,
                     "hidden": a.hidden, "requires": a.requires, "reveal_at": a.reveal_at,
-                    "unlocked": unlocked(&a.condition_json)
+                    "unlocked": unlocked_ids.contains(&a.id)
                 }))
                 .collect::<Vec<_>>()))
         }
         "achievement.create" => {
-            let requires = args.get("requires")
-                .and_then(|v| serde_json::from_value::<Vec<String>>(v.clone()).ok())
-                .unwrap_or_default();
+            let condition = args
+                .get("condition")
+                .filter(|v| !v.is_null())
+                .cloned()
+                .ok_or_else(|| validation_error("创建成就必须提供有效 condition"))?;
+            validate_achievement_condition(&condition, 0).map_err(validation_error)?;
+            let requires = match args.get("requires") {
+                Some(value) => serde_json::from_value::<Vec<String>>(value.clone())
+                    .map_err(|_| validation_error("requires 必须是成就 ID 字符串数组"))?,
+                None => Vec::new(),
+            };
+            let existing = solver.store.achievements().list()?;
+            validate_achievement_requires(None, &requires, &existing).map_err(validation_error)?;
+            let kind = match s(args, "type") {
+                Some(value) => soloup_core::schema::AchievementType::parse(value)
+                    .ok_or_else(|| validation_error("非法 type"))?,
+                None => soloup_core::schema::AchievementType::Milestone,
+            };
+            let rarity = match s(args, "rarity") {
+                Some(value) => soloup_core::schema::Rarity::parse(value)
+                    .ok_or_else(|| validation_error("非法 rarity"))?,
+                None => soloup_core::schema::Rarity::Common,
+            };
+            let points = i(args, "points").unwrap_or(10);
+            if args.get("points").is_some() && i(args, "points").is_none() {
+                return Err(validation_error("points 必须是整数"));
+            }
+            if !(0..=100_000).contains(&points) {
+                return Err(validation_error("points 必须在 0 到 100000 之间"));
+            }
+            let reveal_at = args.get("reveal_at").and_then(|v| v.as_f64());
+            if reveal_at.is_some_and(|value| !(0.0..=1.0).contains(&value)) {
+                return Err(validation_error("reveal_at 必须在 0 到 1 之间"));
+            }
             let a = soloup_core::schema::Achievement {
                 id: String::new(),
                 name: req_str(args, "name")?,
                 description: s(args, "description").map(|x| x.to_string()),
-                condition_json: args.get("condition").cloned(),
-                r#type: s(args, "type").and_then(soloup_core::schema::AchievementType::parse)
-                    .unwrap_or(soloup_core::schema::AchievementType::Milestone),
-                rarity: s(args, "rarity").and_then(soloup_core::schema::Rarity::parse)
-                    .unwrap_or(soloup_core::schema::Rarity::Common),
-                points: i(args, "points").unwrap_or(10),
+                condition_json: Some(condition),
+                r#type: kind,
+                rarity,
+                points,
                 unlocked_at: None,
                 hidden: b(args, "hidden"),
                 requires,
-                reveal_at: args.get("reveal_at").and_then(|v| v.as_f64()),
+                reveal_at,
             };
             let created = solver.store.achievements().create(&a)?;
             Ok(json!({ "id": created.id, "name": created.name }))
@@ -761,33 +930,79 @@ pub fn dispatch(solver: &mut Solver, op: &str, args: &Value) -> Result<Value, Rp
                 .store
                 .achievements()
                 .get(&id)?
-                .ok_or_else(|| RpcError { code: "ERR_NOT_FOUND".into(), message: format!("成就不存在：{id}") })?;
-            if let Some(name) = s(args, "name") { a.name = name.to_string(); }
-            if let Some(desc) = opt_string(args, "description") { a.description = desc; }
-            if args.get("condition").is_some() { a.condition_json = args.get("condition").cloned(); }
+                .ok_or_else(|| RpcError {
+                    code: "ERR_NOT_FOUND".into(),
+                    message: format!("成就不存在：{id}"),
+                })?;
+            if let Some(name) = s(args, "name") {
+                a.name = name.to_string();
+            }
+            if let Some(desc) = opt_string(args, "description") {
+                a.description = desc;
+            }
+            if args.get("condition").is_some() {
+                let value = args
+                    .get("condition")
+                    .filter(|v| !v.is_null())
+                    .ok_or_else(|| validation_error("condition 不能为 null"))?;
+                validate_achievement_condition(value, 0).map_err(validation_error)?;
+                a.condition_json = Some(value.clone());
+            }
             if let Some(type_str) = s(args, "type") {
-                a.r#type = soloup_core::schema::AchievementType::parse(type_str)
-                    .ok_or_else(|| RpcError { code: "ERR_VALIDATION".into(), message: "非法 type".into() })?;
+                a.r#type =
+                    soloup_core::schema::AchievementType::parse(type_str).ok_or_else(|| {
+                        RpcError {
+                            code: "ERR_VALIDATION".into(),
+                            message: "非法 type".into(),
+                        }
+                    })?;
             }
             if let Some(rarity_str) = s(args, "rarity") {
-                a.rarity = soloup_core::schema::Rarity::parse(rarity_str)
-                    .ok_or_else(|| RpcError { code: "ERR_VALIDATION".into(), message: "非法 rarity".into() })?;
+                a.rarity =
+                    soloup_core::schema::Rarity::parse(rarity_str).ok_or_else(|| RpcError {
+                        code: "ERR_VALIDATION".into(),
+                        message: "非法 rarity".into(),
+                    })?;
             }
-            if let Some(pts) = i(args, "points") { a.points = pts; }
-            if args.get("hidden").is_some() { a.hidden = b(args, "hidden"); }
-            if let Some(req_arr) = args.get("requires") {
-                if let Ok(v) = serde_json::from_value::<Vec<String>>(req_arr.clone()) {
-                    a.requires = v;
+            if let Some(pts) = i(args, "points") {
+                if !(0..=100_000).contains(&pts) {
+                    return Err(validation_error("points 必须在 0 到 100000 之间"));
                 }
+                a.points = pts;
+            } else if args.get("points").is_some() {
+                return Err(validation_error("points 必须是整数"));
+            }
+            if args.get("hidden").is_some() {
+                a.hidden = b(args, "hidden");
+            }
+            if let Some(req_arr) = args.get("requires") {
+                a.requires = serde_json::from_value::<Vec<String>>(req_arr.clone())
+                    .map_err(|_| validation_error("requires 必须是成就 ID 字符串数组"))?;
             }
             if let Some(rv) = args.get("reveal_at").and_then(|v| v.as_f64()) {
+                if !(0.0..=1.0).contains(&rv) {
+                    return Err(validation_error("reveal_at 必须在 0 到 1 之间"));
+                }
                 a.reveal_at = Some(rv);
             }
+            let existing = solver.store.achievements().list()?;
+            validate_achievement_requires(Some(&id), &a.requires, &existing)
+                .map_err(validation_error)?;
             solver.store.achievements().update(&a)?;
             Ok(json!({ "id": a.id, "name": a.name }))
         }
         "achievement.delete" => {
             let id = req_str(args, "id")?;
+            let existing = solver.store.achievements().list()?;
+            if existing
+                .iter()
+                .any(|achievement| achievement.requires.iter().any(|required| required == &id))
+            {
+                return Err(RpcError {
+                    code: "ERR_CONFLICT".into(),
+                    message: "该成就是其他成就的前置条件，请先移除相关依赖".into(),
+                });
+            }
             solver.store.achievements().delete(&id)?;
             Ok(json!({ "id": id, "deleted": true }))
         }
@@ -795,9 +1010,8 @@ pub fn dispatch(solver: &mut Solver, op: &str, args: &Value) -> Result<Value, Rp
         // 修复 is_branch：有子节点 → 分支；无属性关联 → 分支（叶子技能必有关联）。
         "repair.is_branch" => {
             let skills = solver.store.skills().list_all()?;
-            let parent_ids: HashSet<String> = skills.iter()
-                .filter_map(|s| s.parent_id.clone())
-                .collect();
+            let parent_ids: HashSet<String> =
+                skills.iter().filter_map(|s| s.parent_id.clone()).collect();
             let mut linked_ids: HashSet<String> = HashSet::new();
             for s in &skills {
                 if !solver.store.links().list_for_skill(&s.id)?.is_empty() {
@@ -821,7 +1035,6 @@ pub fn dispatch(solver: &mut Solver, op: &str, args: &Value) -> Result<Value, Rp
 
         // 首屏聚合：一次请求拿齐渲染所需的全部后端派生数据（前端不重算）。
         "bootstrap" => {
-            let _ = dispatch(solver, "repair.is_branch", &json!({}));
             let overview = dispatch(solver, "overview", &json!({}))?;
             Ok(json!({
                 "date": today_iso(),
@@ -964,10 +1177,13 @@ pub fn dispatch(solver: &mut Solver, op: &str, args: &Value) -> Result<Value, Rp
         "lan.status" => Ok(lan_status(solver)),
 
         "lan.set" => {
-            let enabled = args.get("enabled").and_then(|v| v.as_bool()).ok_or_else(|| RpcError {
-                code: "ERR_VALIDATION".into(),
-                message: "缺少布尔字段 enabled".into(),
-            })?;
+            let enabled = args
+                .get("enabled")
+                .and_then(|v| v.as_bool())
+                .ok_or_else(|| RpcError {
+                    code: "ERR_VALIDATION".into(),
+                    message: "缺少布尔字段 enabled".into(),
+                })?;
             solver
                 .store
                 .settings()
@@ -1103,48 +1319,163 @@ fn lan_qr_svg(url: &str) -> Option<String> {
 }
 
 fn is_leaf(skills: &[Skill], id: &str) -> bool {
-    skills.iter().find(|s| s.id == *id).is_none_or(|s| {
-        !s.is_branch && !skills.iter().any(|c| c.parent_id.as_deref() == Some(id))
-    })
+    skills
+        .iter()
+        .find(|s| s.id == *id)
+        .is_none_or(|s| !s.is_branch && !skills.iter().any(|c| c.parent_id.as_deref() == Some(id)))
 }
 
 /// 评估成就条件（stat_threshold DSL）。
 /// 右值默认取 `value`（常量阈值）；若给出 `ref`，则取另一个统计量的当前值 ——
 /// 用于「两个统计量互相比」的条件，例如 allsix：单日点亮数 ≥ 属性总数。
-fn eval_condition(
-    cond: &Option<Value>,
-    total_days: i64,
-    streak: i64,
-    max_lv: f64,
-    max_lit: i64,
-    total_attrs: i64,
-    done: i64,
-    max_skill_checkins: i64,
-) -> bool {
-    let cond = match cond {
-        Some(c) => c,
-        None => return false,
-    };
-    let stat = cond.get("stat").and_then(|v| v.as_str()).unwrap_or("");
-    let operator = cond.get("operator").and_then(|v| v.as_str()).unwrap_or(">=");
-    let stat_value = |name: &str| -> Option<f64> {
-        match name {
-            "totalDays" => Some(total_days as f64),
-            "streak" => Some(streak as f64),
-            "maxSkillLv" => Some(max_lv),
-            "maxLitOneDay" => Some(max_lit as f64),
-            "totalAttrs" => Some(total_attrs as f64),
-            "projectsCompleted" => Some(done as f64),
-            "maxSkillCheckins" => Some(max_skill_checkins as f64),
-            _ => None,
+fn validation_error(message: impl Into<String>) -> RpcError {
+    RpcError {
+        code: "ERR_VALIDATION".into(),
+        message: message.into(),
+    }
+}
+
+fn validate_achievement_condition(value: &Value, depth: usize) -> Result<(), String> {
+    if depth > 8 {
+        return Err("成就条件嵌套不能超过 8 层".into());
+    }
+    let object = value
+        .as_object()
+        .ok_or_else(|| "成就 condition 必须是对象".to_string())?;
+    if let Some((_operator, children)) = object
+        .iter()
+        .find(|(key, _)| key.as_str() == "all" || key.as_str() == "any")
+    {
+        if object.len() != 1 {
+            return Err("复合条件只能包含 all 或 any 一个字段".into());
         }
-    };
-    let Some(actual) = stat_value(stat) else {
+        let children = children
+            .as_array()
+            .filter(|items| !items.is_empty() && items.len() <= 16)
+            .ok_or_else(|| "all/any 必须包含 1 到 16 个条件".to_string())?;
+        for child in children {
+            validate_achievement_condition(child, depth + 1)?;
+        }
+        return Ok(());
+    }
+
+    let allowed_stats = [
+        "totalDays",
+        "streak",
+        "weekDays",
+        "maxSkillLv",
+        "maxLitOneDay",
+        "totalAttrs",
+        "projectsCompleted",
+        "maxSkillCheckins",
+    ];
+    let stat = object
+        .get("stat")
+        .and_then(Value::as_str)
+        .ok_or_else(|| "成就条件缺少 stat".to_string())?;
+    if !allowed_stats.contains(&stat) {
+        return Err(format!("不支持的成就统计量：{stat}"));
+    }
+    let operator = object
+        .get("operator")
+        .and_then(Value::as_str)
+        .ok_or_else(|| "成就条件缺少 operator".to_string())?;
+    if ![">=", ">", "==", "<=", "<"].contains(&operator) {
+        return Err(format!("不支持的比较符：{operator}"));
+    }
+    match (object.get("value"), object.get("ref")) {
+        (Some(value), None) if value.as_f64().is_some_and(f64::is_finite) => {}
+        (None, Some(reference)) => {
+            let reference = reference
+                .as_str()
+                .ok_or_else(|| "condition.ref 必须是统计量名称".to_string())?;
+            if !allowed_stats.contains(&reference) {
+                return Err(format!("不支持的成就统计量：{reference}"));
+            }
+        }
+        _ => return Err("成就条件必须且只能指定数值 value 或统计量 ref".into()),
+    }
+    if object.len() != 3 {
+        return Err("成就条件包含未知字段".into());
+    }
+    Ok(())
+}
+
+fn validate_achievement_requires(
+    id: Option<&str>,
+    requires: &[String],
+    achievements: &[Achievement],
+) -> Result<(), String> {
+    let mut seen = HashSet::new();
+    for required in requires {
+        if !seen.insert(required) {
+            return Err(format!("前置成就重复：{required}"));
+        }
+        if id == Some(required.as_str()) {
+            return Err("成就不能以前置条件依赖自身".into());
+        }
+        if !achievements
+            .iter()
+            .any(|achievement| achievement.id == *required)
+        {
+            return Err(format!("前置成就不存在：{required}"));
+        }
+        if let Some(id) = id {
+            if achievement_reaches(achievements, required, id, &mut HashSet::new()) {
+                return Err("前置关系会形成循环依赖".into());
+            }
+        }
+    }
+    Ok(())
+}
+
+fn achievement_reaches(
+    achievements: &[Achievement],
+    from: &str,
+    target: &str,
+    visited: &mut HashSet<String>,
+) -> bool {
+    if from == target {
+        return true;
+    }
+    if !visited.insert(from.to_string()) {
+        return false;
+    }
+    achievements
+        .iter()
+        .find(|achievement| achievement.id == from)
+        .is_some_and(|achievement| {
+            achievement
+                .requires
+                .iter()
+                .any(|required| achievement_reaches(achievements, required, target, visited))
+        })
+}
+
+fn eval_condition(cond: &Option<Value>, stats: &HashMap<String, f64>) -> bool {
+    cond.as_ref()
+        .is_some_and(|condition| eval_condition_value(condition, stats))
+}
+
+fn eval_condition_value(condition: &Value, stats: &HashMap<String, f64>) -> bool {
+    if let Some(all) = condition.get("all").and_then(Value::as_array) {
+        return !all.is_empty() && all.iter().all(|child| eval_condition_value(child, stats));
+    }
+    if let Some(any) = condition.get("any").and_then(Value::as_array) {
+        return !any.is_empty() && any.iter().any(|child| eval_condition_value(child, stats));
+    }
+    let cond = condition;
+    let stat = cond.get("stat").and_then(|v| v.as_str()).unwrap_or("");
+    let operator = cond
+        .get("operator")
+        .and_then(|v| v.as_str())
+        .unwrap_or(">=");
+    let Some(actual) = stats.get(stat).copied() else {
         return false;
     };
     let target = match cond.get("ref").and_then(|v| v.as_str()) {
-        Some(r) => match stat_value(r) {
-            Some(v) => v,
+        Some(r) => match stats.get(r) {
+            Some(v) => *v,
             None => return false,
         },
         None => cond.get("value").and_then(|v| v.as_f64()).unwrap_or(0.0),
@@ -1156,6 +1487,27 @@ fn eval_condition(
         "<=" => actual <= target,
         "<" => actual < target,
         _ => false,
+    }
+}
+
+fn resolve_unlocked_achievements(
+    achievements: &[Achievement],
+    condition_met: impl Fn(&Option<Value>) -> bool,
+) -> HashSet<String> {
+    let mut unlocked = HashSet::new();
+    loop {
+        let before = unlocked.len();
+        for achievement in achievements {
+            if !unlocked.contains(&achievement.id)
+                && condition_met(&achievement.condition_json)
+                && achievement.requires.iter().all(|id| unlocked.contains(id))
+            {
+                unlocked.insert(achievement.id.clone());
+            }
+        }
+        if unlocked.len() == before {
+            return unlocked;
+        }
     }
 }
 
@@ -1175,4 +1527,95 @@ fn life_pct(born: &str, expectancy: f64) -> f64 {
     ((elapsed / total) * 100.0).clamp(0.0, 100.0)
 }
 
+#[cfg(test)]
+mod achievement_tests {
+    use super::{
+        eval_condition, resolve_unlocked_achievements, validate_achievement_condition,
+        validate_achievement_requires,
+    };
+    use serde_json::json;
+    use soloup_core::schema::{Achievement, AchievementType, Rarity};
+    use std::collections::HashMap;
 
+    fn achievement(id: &str, requires: &[&str]) -> Achievement {
+        Achievement {
+            id: id.to_string(),
+            name: id.to_string(),
+            description: None,
+            condition_json: Some(json!({"always": true})),
+            r#type: AchievementType::Milestone,
+            rarity: Rarity::Common,
+            points: 1,
+            unlocked_at: None,
+            hidden: false,
+            requires: requires.iter().map(|id| id.to_string()).collect(),
+            reveal_at: None,
+        }
+    }
+
+    #[test]
+    fn achievement_unlock_waits_for_all_prerequisites() {
+        let items = vec![
+            achievement("finish", &["streak", "skill"]),
+            achievement("skill", &["first"]),
+            achievement("first", &[]),
+            achievement("streak", &[]),
+        ];
+        let unlocked = resolve_unlocked_achievements(&items, |_| true);
+        assert_eq!(unlocked.len(), 4);
+        assert!(unlocked.contains("finish"));
+
+        let cycle = vec![achievement("a", &["b"]), achievement("b", &["a"])];
+        assert!(resolve_unlocked_achievements(&cycle, |_| true).is_empty());
+    }
+
+    #[test]
+    fn composite_conditions_evaluate_all_and_any() {
+        let stats = HashMap::from([("totalDays".to_string(), 10.0), ("streak".to_string(), 4.0)]);
+        assert!(!eval_condition(
+            &Some(json!({"all":[
+                {"stat":"totalDays","operator":">=","value":10},
+                {"stat":"streak","operator":">=","value":5}
+            ]})),
+            &stats
+        ));
+        assert!(eval_condition(
+            &Some(json!({"any":[
+                {"stat":"totalDays","operator":">=","value":10},
+                {"stat":"streak","operator":">=","value":5}
+            ]})),
+            &stats
+        ));
+    }
+
+    #[test]
+    fn condition_validation_rejects_unknown_stats_and_accepts_composition() {
+        assert!(validate_achievement_condition(
+            &json!({"all":[
+                {"stat":"totalDays","operator":">=","value":10},
+                {"any":[{"stat":"streak","operator":">=","value":7}]}
+            ]}),
+            0
+        )
+        .is_ok());
+        assert!(validate_achievement_condition(
+            &json!({"stat":"imaginary","operator":">=","value":10}),
+            0
+        )
+        .is_err());
+        assert!(validate_achievement_condition(
+            &json!({"stat":"totalDays","operator":">=","value":"ten"}),
+            0
+        )
+        .is_err());
+    }
+
+    #[test]
+    fn achievement_requirements_reject_missing_duplicates_self_and_cycles() {
+        let items = vec![achievement("a", &["b"]), achievement("b", &[])];
+        assert!(validate_achievement_requires(Some("b"), &["a".into()], &items).is_err());
+        assert!(validate_achievement_requires(Some("a"), &["a".into()], &items).is_err());
+        assert!(validate_achievement_requires(None, &["missing".into()], &items).is_err());
+        assert!(validate_achievement_requires(None, &["b".into(), "b".into()], &items).is_err());
+    }
+}

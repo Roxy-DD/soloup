@@ -10,12 +10,54 @@ use soloup_core::schema::{
 use soloup_store::Store;
 
 pub const SEED_ATTRS: &[(&str, &str, &str, AttributeCategory, &str, i64)] = &[
-    ("vit", "体质", "身体的力量、耐力与恢复", AttributeCategory::Physical, "#C6352B", 0),
-    ("int", "智力", "思维、逻辑与学习深度", AttributeCategory::Mental, "#2456C4", 1),
-    ("crea", "创造", "灵感、想象与产出", AttributeCategory::Creative, "#6D28D9", 2),
-    ("will", "意志", "专注、坚持与抗压", AttributeCategory::Mental, "#B45309", 3),
-    ("cha", "魅力", "表达、风格与影响力", AttributeCategory::Social, "#BE185D", 4),
-    ("sen", "感知", "觉察、细腻与直觉", AttributeCategory::Mental, "#047857", 5),
+    (
+        "vit",
+        "体质",
+        "身体的力量、耐力与恢复",
+        AttributeCategory::Physical,
+        "#C6352B",
+        0,
+    ),
+    (
+        "int",
+        "智力",
+        "思维、逻辑与学习深度",
+        AttributeCategory::Mental,
+        "#2456C4",
+        1,
+    ),
+    (
+        "crea",
+        "创造",
+        "灵感、想象与产出",
+        AttributeCategory::Creative,
+        "#6D28D9",
+        2,
+    ),
+    (
+        "will",
+        "意志",
+        "专注、坚持与抗压",
+        AttributeCategory::Mental,
+        "#B45309",
+        3,
+    ),
+    (
+        "cha",
+        "魅力",
+        "表达、风格与影响力",
+        AttributeCategory::Social,
+        "#BE185D",
+        4,
+    ),
+    (
+        "sen",
+        "感知",
+        "觉察、细腻与直觉",
+        AttributeCategory::Mental,
+        "#047857",
+        5,
+    ),
 ];
 
 pub struct SkillSeed {
@@ -28,21 +70,126 @@ pub struct SkillSeed {
 }
 
 pub const SEED_SKILLS: &[SkillSeed] = &[
-    SkillSeed { id: "art", name: "艺术", category: SkillCategory::Cognitive, difficulty: None, parent: None, is_branch: true },
-    SkillSeed { id: "art-paint", name: "绘画", category: SkillCategory::Cognitive, difficulty: None, parent: Some("art"), is_branch: true },
-    SkillSeed { id: "art-music", name: "音乐", category: SkillCategory::Cognitive, difficulty: None, parent: Some("art"), is_branch: true },
-    SkillSeed { id: "sketch", name: "素描", category: SkillCategory::Cognitive, difficulty: Some(Difficulty::Normal), parent: Some("art-paint"), is_branch: false },
-    SkillSeed { id: "oil", name: "油画", category: SkillCategory::Cognitive, difficulty: Some(Difficulty::Normal), parent: Some("art-paint"), is_branch: false },
-    SkillSeed { id: "digi", name: "数字绘画", category: SkillCategory::Cognitive, difficulty: Some(Difficulty::Normal), parent: Some("art-paint"), is_branch: false },
-    SkillSeed { id: "guitar", name: "吉他", category: SkillCategory::Cognitive, difficulty: Some(Difficulty::Casual), parent: Some("art-music"), is_branch: false },
-    SkillSeed { id: "tech", name: "技术", category: SkillCategory::Knowledge, difficulty: None, parent: None, is_branch: true },
-    SkillSeed { id: "tech-code", name: "编程", category: SkillCategory::Knowledge, difficulty: None, parent: Some("tech"), is_branch: true },
-    SkillSeed { id: "fe", name: "前端开发", category: SkillCategory::Knowledge, difficulty: Some(Difficulty::Normal), parent: Some("tech-code"), is_branch: false },
-    SkillSeed { id: "rust", name: "Rust", category: SkillCategory::Knowledge, difficulty: Some(Difficulty::Hard), parent: Some("tech-code"), is_branch: false },
-    SkillSeed { id: "body", name: "身体", category: SkillCategory::Physical, difficulty: None, parent: None, is_branch: true },
-    SkillSeed { id: "body-sport", name: "运动", category: SkillCategory::Physical, difficulty: None, parent: Some("body"), is_branch: true },
-    SkillSeed { id: "run", name: "跑步", category: SkillCategory::Physical, difficulty: Some(Difficulty::Normal), parent: Some("body-sport"), is_branch: false },
-    SkillSeed { id: "gym", name: "力量训练", category: SkillCategory::Physical, difficulty: Some(Difficulty::Hard), parent: Some("body-sport"), is_branch: false },
+    SkillSeed {
+        id: "art",
+        name: "艺术",
+        category: SkillCategory::Cognitive,
+        difficulty: None,
+        parent: None,
+        is_branch: true,
+    },
+    SkillSeed {
+        id: "art-paint",
+        name: "绘画",
+        category: SkillCategory::Cognitive,
+        difficulty: None,
+        parent: Some("art"),
+        is_branch: true,
+    },
+    SkillSeed {
+        id: "art-music",
+        name: "音乐",
+        category: SkillCategory::Cognitive,
+        difficulty: None,
+        parent: Some("art"),
+        is_branch: true,
+    },
+    SkillSeed {
+        id: "sketch",
+        name: "素描",
+        category: SkillCategory::Cognitive,
+        difficulty: Some(Difficulty::Normal),
+        parent: Some("art-paint"),
+        is_branch: false,
+    },
+    SkillSeed {
+        id: "oil",
+        name: "油画",
+        category: SkillCategory::Cognitive,
+        difficulty: Some(Difficulty::Normal),
+        parent: Some("art-paint"),
+        is_branch: false,
+    },
+    SkillSeed {
+        id: "digi",
+        name: "数字绘画",
+        category: SkillCategory::Cognitive,
+        difficulty: Some(Difficulty::Normal),
+        parent: Some("art-paint"),
+        is_branch: false,
+    },
+    SkillSeed {
+        id: "guitar",
+        name: "吉他",
+        category: SkillCategory::Cognitive,
+        difficulty: Some(Difficulty::Casual),
+        parent: Some("art-music"),
+        is_branch: false,
+    },
+    SkillSeed {
+        id: "tech",
+        name: "技术",
+        category: SkillCategory::Knowledge,
+        difficulty: None,
+        parent: None,
+        is_branch: true,
+    },
+    SkillSeed {
+        id: "tech-code",
+        name: "编程",
+        category: SkillCategory::Knowledge,
+        difficulty: None,
+        parent: Some("tech"),
+        is_branch: true,
+    },
+    SkillSeed {
+        id: "fe",
+        name: "前端开发",
+        category: SkillCategory::Knowledge,
+        difficulty: Some(Difficulty::Normal),
+        parent: Some("tech-code"),
+        is_branch: false,
+    },
+    SkillSeed {
+        id: "rust",
+        name: "Rust",
+        category: SkillCategory::Knowledge,
+        difficulty: Some(Difficulty::Hard),
+        parent: Some("tech-code"),
+        is_branch: false,
+    },
+    SkillSeed {
+        id: "body",
+        name: "身体",
+        category: SkillCategory::Physical,
+        difficulty: None,
+        parent: None,
+        is_branch: true,
+    },
+    SkillSeed {
+        id: "body-sport",
+        name: "运动",
+        category: SkillCategory::Physical,
+        difficulty: None,
+        parent: Some("body"),
+        is_branch: true,
+    },
+    SkillSeed {
+        id: "run",
+        name: "跑步",
+        category: SkillCategory::Physical,
+        difficulty: Some(Difficulty::Normal),
+        parent: Some("body-sport"),
+        is_branch: false,
+    },
+    SkillSeed {
+        id: "gym",
+        name: "力量训练",
+        category: SkillCategory::Physical,
+        difficulty: Some(Difficulty::Hard),
+        parent: Some("body-sport"),
+        is_branch: false,
+    },
 ];
 
 /// 叶子 → 属性关联权重。
@@ -58,7 +205,9 @@ pub const SEED_LINKS: &[(&str, &[(&str, f64)])] = &[
 ];
 
 const CYCLE: [i64; 14] = [2, 0, 1, 3, 0, 2, 4, 1, 2, 0, 3, 1, 0, 2];
-const LEAVES: [&str; 8] = ["sketch", "oil", "digi", "guitar", "fe", "rust", "run", "gym"];
+const LEAVES: [&str; 8] = [
+    "sketch", "oil", "digi", "guitar", "fe", "rust", "run", "gym",
+];
 
 /// 84 天确定性伪随机打卡记录（与 TS 一致的 CYCLE/LEAVES 取模）。
 pub fn seed_records() -> Vec<(String, Vec<String>)> {
@@ -85,7 +234,7 @@ pub fn seed_records() -> Vec<(String, Vec<String>)> {
     // 补齐近 7 天，保证 streak
     for i in 1..=7 {
         let date = add_days(&today, -i);
-        if !seen.iter().any(|d| *d == date) {
+        if !seen.contains(&date) {
             out.push((date, vec!["fe".to_string()]));
         }
     }
@@ -93,7 +242,16 @@ pub fn seed_records() -> Vec<(String, Vec<String>)> {
     out
 }
 
-pub const SEED_PROJECTS: &[(&str, &str, &str, &str, Option<&str>, ProjectStatus)] = &[
+type SeedProject = (
+    &'static str,
+    &'static str,
+    &'static str,
+    &'static str,
+    Option<&'static str>,
+    ProjectStatus,
+);
+
+pub const SEED_PROJECTS: &[SeedProject] = &[
     (
         "p-thesis",
         "毕业设计 · 萌趣记账小程序",
@@ -118,39 +276,155 @@ pub fn seed_achievements() -> Vec<Achievement> {
     // condition_json 采用成就条件 DSL：{"stat": <统计量>, "operator": <比较符>, "value": <阈值>}。
     // 需要「两个统计量互相比较」时用 "ref" 顶替 "value"（见 allsix：单日点亮数 ≥ 属性总数）。
     // 新增成就无需改 Rust：往 achievements 表插一行并写好 condition_json 即可。
-    let defs: &[(&str, &str, &str, AchievementType, Rarity, i64, bool, &[&str], Option<f64>, &str)] = &[
+    type SeedAchievement = (
+        &'static str,
+        &'static str,
+        &'static str,
+        AchievementType,
+        Rarity,
+        i64,
+        bool,
+        &'static [&'static str],
+        Option<f64>,
+        &'static str,
+    );
+    let defs: &[SeedAchievement] = &[
         // id, name, desc, type, rarity, points, hidden, requires, reveal_at, condition
-        ("first",  "初次觉醒", "完成第一次每日记录",          AchievementType::Milestone,  Rarity::Common,    10,  true,  &[],              Some(0.5), r#"{"stat":"totalDays","operator":">=","value":1}"#),
-        ("twin",   "双线并进", "单日点亮 2 项以上属性",       AchievementType::Attribute,  Rarity::Common,    20,  true,  &["first"],       Some(0.5), r#"{"stat":"maxLitOneDay","operator":">=","value":2}"#),
-        ("week7",  "七日之约", "连续记录 7 天不间断",         AchievementType::Milestone,  Rarity::Rare,      30,  false, &[],              None,      r#"{"stat":"streak","operator":">=","value":7}"#),
-        ("dawn",   "破晓之光", "任一技能达到 4 级",           AchievementType::Skill,      Rarity::Rare,      40,  false, &[],              None,      r#"{"stat":"maxSkillLv","operator":">=","value":4}"#),
-        ("d100",   "百日筑基", "累计记录 100 天",             AchievementType::Milestone,  Rarity::Epic,     100,  false, &[],              None,      r#"{"stat":"totalDays","operator":">=","value":100}"#),
-        ("allsix", "六艺俱全", "单日点亮全部属性",            AchievementType::Attribute,  Rarity::Epic,     120,  true,  &["twin"],        Some(0.4), r#"{"stat":"maxLitOneDay","operator":">=","ref":"totalAttrs"}"#),
-        ("done1",  "完稿",     "完成第一个项目",              AchievementType::Project,    Rarity::Legendary, 150, false, &["week7","dawn"], None,     r#"{"stat":"projectsCompleted","operator":">=","value":1}"#),
-        ("grand",  "宗师之路", "任一技能达到 20 级",          AchievementType::Skill,      Rarity::Legendary, 200, false, &["dawn"],        None,      r#"{"stat":"maxSkillLv","operator":">=","value":20}"#),
-        ("tenk",   "万时之功", "某个技能累计打卡 10,000 天",  AchievementType::Skill,      Rarity::Legendary, 300, false, &["d100"],        None,      r#"{"stat":"maxSkillCheckins","operator":">=","value":10000}"#),
+        (
+            "first",
+            "初次觉醒",
+            "完成第一次每日记录",
+            AchievementType::Milestone,
+            Rarity::Common,
+            10,
+            true,
+            &[],
+            Some(0.5),
+            r#"{"stat":"totalDays","operator":">=","value":1}"#,
+        ),
+        (
+            "twin",
+            "双线并进",
+            "单日点亮 2 项以上属性",
+            AchievementType::Attribute,
+            Rarity::Common,
+            20,
+            true,
+            &["first"],
+            Some(0.5),
+            r#"{"stat":"maxLitOneDay","operator":">=","value":2}"#,
+        ),
+        (
+            "week7",
+            "七日之约",
+            "连续记录 7 天不间断",
+            AchievementType::Milestone,
+            Rarity::Rare,
+            30,
+            false,
+            &[],
+            None,
+            r#"{"stat":"streak","operator":">=","value":7}"#,
+        ),
+        (
+            "dawn",
+            "破晓之光",
+            "任一技能累计记录 7 天",
+            AchievementType::Skill,
+            Rarity::Rare,
+            40,
+            false,
+            &[],
+            None,
+            r#"{"stat":"maxSkillCheckins","operator":">=","value":7}"#,
+        ),
+        (
+            "d100",
+            "百日筑基",
+            "累计记录 100 天",
+            AchievementType::Milestone,
+            Rarity::Epic,
+            100,
+            false,
+            &[],
+            None,
+            r#"{"stat":"totalDays","operator":">=","value":100}"#,
+        ),
+        (
+            "allsix",
+            "六艺俱全",
+            "单日点亮全部属性",
+            AchievementType::Attribute,
+            Rarity::Epic,
+            120,
+            true,
+            &["twin"],
+            Some(0.4),
+            r#"{"stat":"maxLitOneDay","operator":">=","ref":"totalAttrs"}"#,
+        ),
+        (
+            "done1",
+            "完稿",
+            "完成第一个项目",
+            AchievementType::Project,
+            Rarity::Legendary,
+            150,
+            false,
+            &["week7", "dawn"],
+            None,
+            r#"{"stat":"projectsCompleted","operator":">=","value":1}"#,
+        ),
+        (
+            "grand",
+            "百日专注",
+            "任一技能累计记录 100 天",
+            AchievementType::Skill,
+            Rarity::Legendary,
+            200,
+            false,
+            &["dawn"],
+            None,
+            r#"{"stat":"maxSkillCheckins","operator":">=","value":100}"#,
+        ),
+        (
+            "tenk",
+            "年度深耕",
+            "任一技能累计记录 365 天",
+            AchievementType::Skill,
+            Rarity::Legendary,
+            300,
+            false,
+            &["d100"],
+            None,
+            r#"{"stat":"maxSkillCheckins","operator":">=","value":365}"#,
+        ),
     ];
     defs.iter()
-        .map(|(id, name, desc, t, r, points, hidden, requires, reveal_at, cond)| Achievement {
-            id: (*id).to_string(),
-            name: (*name).to_string(),
-            description: Some((*desc).to_string()),
-            condition_json: serde_json::from_str(cond).ok(),
-            r#type: *t,
-            rarity: *r,
-            points: *points,
-            unlocked_at: None,
-            hidden: *hidden,
-            requires: requires.iter().map(|s| s.to_string()).collect(),
-            reveal_at: *reveal_at,
-        })
+        .map(
+            |(id, name, desc, t, r, points, hidden, requires, reveal_at, cond)| Achievement {
+                id: (*id).to_string(),
+                name: (*name).to_string(),
+                description: Some((*desc).to_string()),
+                condition_json: serde_json::from_str(cond).ok(),
+                r#type: *t,
+                rarity: *r,
+                points: *points,
+                unlocked_at: None,
+                hidden: *hidden,
+                requires: requires.iter().map(|s| s.to_string()).collect(),
+                reveal_at: *reveal_at,
+            },
+        )
         .collect()
 }
 
 /// 清空并写入演示种子（事务内）。
 pub fn seed_demo(store: &mut Store) -> Result<(), soloup_store::StoreError> {
     store.reset().wipe(&[])?;
-    let created_at = seed_records().first().map(|(d, _)| d.clone()).unwrap_or_else(today_iso);
+    let created_at = seed_records()
+        .first()
+        .map(|(d, _)| d.clone())
+        .unwrap_or_else(today_iso);
 
     store.tx(|c| -> Result<(), soloup_store::StoreError> {
         let attrs = soloup_store::attributes::AttributeRepo { db: c };
@@ -235,7 +509,10 @@ pub fn seed_demo(store: &mut Store) -> Result<(), soloup_store::StoreError> {
         }
 
         soloup_store::settings::SettingsRepo { db: c }.set("seeded", "1")?;
-        soloup_store::settings::SettingsRepo { db: c }.set_json("life_axis", &serde_json::json!({ "born": "2002-05-20", "expectancy": 120 }))?;
+        soloup_store::settings::SettingsRepo { db: c }.set_json(
+            "life_axis",
+            &serde_json::json!({ "born": "2002-05-20", "expectancy": 120 }),
+        )?;
         Ok(())
     })
 }

@@ -5,12 +5,94 @@ on:
     tags:
       - 'v*'
   workflow_dispatch:
+    inputs:
+      tag_name:
+        description: Existing version tag to release (for example v1.3.0)
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.event_name == 'workflow_dispatch' && inputs.tag_name || github.ref_name }}
+  cancel-in-progress: false
 
 jobs:
-  release:
+  quality:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag_name || github.ref }}
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Verify tag matches application version
+        shell: pwsh
+        run: |
+          $tag = if ('${{ github.event_name }}' -eq 'workflow_dispatch') { '${{ inputs.tag_name }}' } else { '${{ github.ref_name }}' }
+          $packageVersion = (Get-Content package.json | ConvertFrom-Json).version
+          $tauriVersion = (Get-Content src-tauri/tauri.conf.json | ConvertFrom-Json).version
+          $backendVersion = (Select-String -Path backend/Cargo.toml -Pattern '^version\s*=\s*"([^"]+)"').Matches[0].Groups[1].Value
+          $desktopVersion = (Select-String -Path src-tauri/Cargo.toml -Pattern '^version\s*=\s*"([^"]+)"').Matches[0].Groups[1].Value
+          if ($tag -ne "v$packageVersion" -or $packageVersion -ne $tauriVersion -or $packageVersion -ne $backendVersion -or $packageVersion -ne $desktopVersion) {
+            throw "Release version mismatch: tag=$tag package=$packageVersion tauri=$tauriVersion backend=$backendVersion desktop=$desktopVersion"
+          }
+
+      - name: Check formatting
+        run: pnpm format:check
+
+      - name: Typecheck and lint
+        run: |
+          pnpm typecheck
+          pnpm lint
+
+      - name: Test frontend
+        run: pnpm test
+
+      - name: Check Rust formatting
+        run: cargo fmt --all -- --check
+        working-directory: backend
+
+      - name: Check Tauri Rust formatting
+        run: cargo fmt --all -- --check
+        working-directory: src-tauri
+
+      - name: Check Tauri Rust build
+        run: cargo check --locked
+        working-directory: src-tauri
+
+      - name: Test Rust workspace
+        run: cargo test --workspace --locked
+        working-directory: backend
+
+      - name: Lint Rust workspace
+        run: cargo clippy --workspace --all-targets --locked -- -D warnings
+        working-directory: backend
+
+  release:
+    runs-on: windows-latest
+    needs: quality
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag_name || github.ref }}
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
@@ -30,7 +112,7 @@ jobs:
           Start-Process "$env:TEMP\MicrosoftEdgeWebview2Setup.exe" -ArgumentList "/install" -Wait
 
       - name: Install frontend dependencies
-        run: pnpm install
+        run: pnpm install --frozen-lockfile
 
       - name: Build backend sidecars
         run: cd backend && cargo build --release -p soloup-server -p soloup-mcp
@@ -60,8 +142,8 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          tagName: ${{ github.ref_name }}
-          releaseName: 'Soloup ${{ github.ref_name }}'
+          tagName: ${{ github.event_name == 'workflow_dispatch' && inputs.tag_name || github.ref_name }}
+          releaseName: "Soloup ${{ github.event_name == 'workflow_dispatch' && inputs.tag_name || github.ref_name }}"
           releaseBody: |
             下载下方 Assets 里的 `Soloup_<version>_x64-setup.exe`，双击安装即可（Windows x64）。
 

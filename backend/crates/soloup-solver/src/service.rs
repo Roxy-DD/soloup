@@ -21,9 +21,7 @@ use soloup_store::Store;
 use crate::derive::build_snapshot;
 use crate::errors::{SolverError, SolverErrorCode};
 use crate::ledger::{settle_range, ParamSegment};
-use crate::params::{
-    collect_profile_changes, profile_diff, build_param_timeline, ProfileSnapshot,
-};
+use crate::params::{build_param_timeline, collect_profile_changes, profile_diff, ProfileSnapshot};
 
 /* ------------------------------ 类型 ------------------------------ */
 
@@ -166,10 +164,7 @@ impl Solver {
     }
 
     fn member_map(&self, to: &str) -> Result<HashMap<String, Vec<String>>, SolverError> {
-        let members = self
-            .store
-            .daily()
-            .list_members(None, Some(to))?;
+        let members = self.store.daily().list_members(None, Some(to))?;
         let mut map: HashMap<String, Vec<String>> = HashMap::new();
         for m in members {
             map.entry(m.date).or_default().push(m.skill_id);
@@ -225,7 +220,11 @@ impl Solver {
                 .unwrap_or(false)
         };
         let accounts = settle_range(
-            AccountState { c: skill.c, v: skill.v }.into(),
+            AccountState {
+                c: skill.c,
+                v: skill.v,
+            }
+            .into(),
             &from,
             to,
             &is_checkin,
@@ -250,8 +249,14 @@ impl Solver {
                 let after = self.store.skills().settle_accounts(&skill.id, c, v, &to)?;
                 effects.push(SkillEffect {
                     skill_id: skill.id.clone(),
-                    before: AccountState { c: skill.c, v: skill.v },
-                    after: AccountState { c: after.c, v: after.v },
+                    before: AccountState {
+                        c: skill.c,
+                        v: skill.v,
+                    },
+                    after: AccountState {
+                        c: after.c,
+                        v: after.v,
+                    },
                     before_level: self.leaf_level_of(&skill, &overrides),
                     after_level: self.leaf_level_of(&after, &overrides),
                 });
@@ -261,31 +266,48 @@ impl Solver {
     }
 
     /// 打卡（date 必须=今天；同日覆盖 → 受影响技能全量重放）。
-    pub fn checkin(&mut self, input: &CheckinInput, actor: AuditActor) -> Result<Vec<SkillEffect>, SolverError> {
+    pub fn checkin(
+        &mut self,
+        input: &CheckinInput,
+        actor: AuditActor,
+    ) -> Result<Vec<SkillEffect>, SolverError> {
         let today = self.today();
         let date = &input.date;
         if compare_iso(date, &today) == std::cmp::Ordering::Greater {
-            return Err(SolverError::new(SolverErrorCode::FutureDate, format!("打卡日期 {date} 晚于今天 {today}")));
+            return Err(SolverError::new(
+                SolverErrorCode::FutureDate,
+                format!("打卡日期 {date} 晚于今天 {today}"),
+            ));
         }
         if compare_iso(date, &today) != std::cmp::Ordering::Equal {
-            return Err(SolverError::new(SolverErrorCode::PastEdit, "历史日期编辑属 v1.2，今天以外不可写"));
+            return Err(SolverError::new(
+                SolverErrorCode::PastEdit,
+                "历史日期编辑属 v1.2，今天以外不可写",
+            ));
         }
         let mut deduped = input.skill_ids.clone();
         deduped.dedup();
         if deduped.is_empty() {
-            return Err(SolverError::new(SolverErrorCode::Validation, "打卡技能列表不能为空"));
+            return Err(SolverError::new(
+                SolverErrorCode::Validation,
+                "打卡技能列表不能为空",
+            ));
         }
         for id in &deduped {
-            let skill = self
-                .store
-                .skills()
-                .get(id)?
-                .ok_or_else(|| SolverError::new(SolverErrorCode::NotFound, format!("技能不存在：{id}")))?;
+            let skill = self.store.skills().get(id)?.ok_or_else(|| {
+                SolverError::new(SolverErrorCode::NotFound, format!("技能不存在：{id}"))
+            })?;
             if !self.store.skills().children_of(id)?.is_empty() {
-                return Err(SolverError::new(SolverErrorCode::NonLeaf, format!("技能 {id} 非叶子，不能打卡")));
+                return Err(SolverError::new(
+                    SolverErrorCode::NonLeaf,
+                    format!("技能 {id} 非叶子，不能打卡"),
+                ));
             }
             if skill.archived_at.is_some() {
-                return Err(SolverError::new(SolverErrorCode::Archived, format!("技能 {id} 已归档，不能打卡")));
+                return Err(SolverError::new(
+                    SolverErrorCode::Archived,
+                    format!("技能 {id} 已归档，不能打卡"),
+                ));
             }
         }
         let previous = self.store.daily().skill_ids_on(date)?;
@@ -329,7 +351,11 @@ impl Solver {
     }
 
     /// 统一写入口：领域变更 + 审计同一事务。
-    pub fn mutate(&mut self, mutation: MutationKind, actor: AuditActor) -> Result<MutateResult, SolverError> {
+    pub fn mutate(
+        &mut self,
+        mutation: MutationKind,
+        actor: AuditActor,
+    ) -> Result<MutateResult, SolverError> {
         let today = self.today();
         let overrides = self.read_overrides()?;
         let detail = self.store.tx(|c| -> Result<serde_json::Value, SolverError> {
@@ -471,13 +497,19 @@ impl Solver {
     }
 
     /// 派生只读快照（先结算再算）。
-    pub fn snapshot(&mut self, to_date: Option<&str>) -> Result<crate::derive::DerivedSnapshot, SolverError> {
-        let date = to_date.map(|s| s.to_string()).unwrap_or_else(|| self.today());
+    pub fn snapshot(
+        &mut self,
+        to_date: Option<&str>,
+    ) -> Result<crate::derive::DerivedSnapshot, SolverError> {
+        let date = to_date
+            .map(|s| s.to_string())
+            .unwrap_or_else(|| self.today());
         self.settle_all()?;
         let overrides = self.read_overrides()?;
         let skills = self.store.skills().list_all()?;
         let attributes = self.store.attributes().list()?;
-        let mut links_by_attribute: HashMap<String, Vec<soloup_core::schema::SkillAttributeLink>> = HashMap::new();
+        let mut links_by_attribute: HashMap<String, Vec<soloup_core::schema::SkillAttributeLink>> =
+            HashMap::new();
         for a in &attributes {
             links_by_attribute.insert(a.id.clone(), self.store.links().list_for_attribute(&a.id)?);
         }
@@ -498,21 +530,32 @@ impl Solver {
         members: &HashMap<String, Vec<String>>,
     ) -> Result<SkillEffect, SolverError> {
         let skills = SkillRepo { db: c };
-        let skill = skills
-            .get(skill_id)?
-            .ok_or_else(|| SolverError::new(SolverErrorCode::NotFound, format!("技能不存在：{skill_id}")))?;
+        let skill = skills.get(skill_id)?.ok_or_else(|| {
+            SolverError::new(SolverErrorCode::NotFound, format!("技能不存在：{skill_id}"))
+        })?;
         let is_leaf = skills.children_of(skill_id)?.is_empty();
         let before_level = if skill.archived_at.is_none() && is_leaf {
             Some(crate::derive::leaf_level(&skill, overrides))
         } else {
             None
         };
-        let audits = AuditRepo { db: c }.list(&AuditQuery { limit: 1_000_000, ..Default::default() })?;
+        let audits = AuditRepo { db: c }.list(&AuditQuery {
+            limit: 1_000_000,
+            ..Default::default()
+        })?;
         let changes = collect_profile_changes(&audits, skill_id);
-        let timeline = build_param_timeline(&skill.created_at, Self::profile_of(&skill), overrides, &changes);
+        let timeline = build_param_timeline(
+            &skill.created_at,
+            Self::profile_of(&skill),
+            overrides,
+            &changes,
+        );
         let segments: Vec<ParamSegment> = timeline
             .into_iter()
-            .map(|s| ParamSegment { from: s.from, accounts: s.params.accounts })
+            .map(|s| ParamSegment {
+                from: s.from,
+                accounts: s.params.accounts,
+            })
             .collect();
         let is_checkin = |d: &str| {
             members
@@ -535,8 +578,14 @@ impl Solver {
         };
         Ok(SkillEffect {
             skill_id: skill_id.to_string(),
-            before: AccountState { c: skill.c, v: skill.v },
-            after: AccountState { c: after.c, v: after.v },
+            before: AccountState {
+                c: skill.c,
+                v: skill.v,
+            },
+            after: AccountState {
+                c: after.c,
+                v: after.v,
+            },
             before_level,
             after_level,
         })

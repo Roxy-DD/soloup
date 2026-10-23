@@ -65,7 +65,9 @@ pub struct ReplayOptions<'a> {
 pub fn replay_full(opts: ReplayOptions) -> Result<Accounts, SolverError> {
     let mut sorted: Vec<&ParamSegment> = opts.segments.iter().collect();
     sorted.sort_by(|a, b| compare_iso(&a.from, &b.from));
-    if sorted.is_empty() || compare_iso(&sorted[0].from, opts.created_at) == std::cmp::Ordering::Greater {
+    if sorted.is_empty()
+        || compare_iso(&sorted[0].from, opts.created_at) == std::cmp::Ordering::Greater
+    {
         return Err(SolverError::new(
             SolverErrorCode::Validation,
             "参数分段为空或首段晚于技能创建日，无法重放",
@@ -100,7 +102,9 @@ pub fn replay_full(opts: ReplayOptions) -> Result<Accounts, SolverError> {
 
     for i in 0..days {
         let d = add_days(opts.created_at, i);
-        while si + 1 < sorted.len() && compare_iso(&sorted[si + 1].from, &d) != std::cmp::Ordering::Greater {
+        while si + 1 < sorted.len()
+            && compare_iso(&sorted[si + 1].from, &d) != std::cmp::Ordering::Greater
+        {
             si += 1;
         }
         let seg = sorted[si];
@@ -111,7 +115,9 @@ pub fn replay_full(opts: ReplayOptions) -> Result<Accounts, SolverError> {
             gap += 1;
         }
         // 次日将进入新参数段 → 本段空窗必须在此收口（不能跨段闭式）
-        if si + 1 < sorted.len() && compare_iso(&d, &add_days(&sorted[si + 1].from, -1)) == std::cmp::Ordering::Equal {
+        if si + 1 < sorted.len()
+            && compare_iso(&d, &add_days(&sorted[si + 1].from, -1)) == std::cmp::Ordering::Equal
+        {
             flush(&mut cur, &mut gap, seg);
         }
     }

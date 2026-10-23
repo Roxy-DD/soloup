@@ -4,7 +4,9 @@
 use soloup_core::curve::{level_from_category, level_of, resolve_curve};
 use soloup_core::goldens::{golden_continuous, GOLDEN_COGNITIVE_GAP};
 use soloup_core::params::category_account_params;
-use soloup_core::settle::{apply_gap_closed_form, replay_days, settle_day, Accounts, SettleParams, ZERO_ACCOUNTS};
+use soloup_core::settle::{
+    apply_gap_closed_form, replay_days, settle_day, Accounts, SettleParams, ZERO_ACCOUNTS,
+};
 use soloup_core::{Difficulty, SkillCategory};
 
 fn round(x: f64, dp: i32) -> f64 {
@@ -73,9 +75,30 @@ fn golden_cognitive_gap_matches() {
     let checkins = vec![true; 100];
     let (day100, _) = replay_days(ZERO_ACCOUNTS, p, &checkins);
     let e100 = day100.c + day100.v;
-    assert_eq_round(day100.c, GOLDEN_COGNITIVE_GAP.day100_c, 3, "c", "cognitive", 100);
-    assert_eq_round(day100.v, GOLDEN_COGNITIVE_GAP.day100_v, 3, "v", "cognitive", 100);
-    assert_eq_round(e100, GOLDEN_COGNITIVE_GAP.day100_e, 1, "e", "cognitive", 100);
+    assert_eq_round(
+        day100.c,
+        GOLDEN_COGNITIVE_GAP.day100_c,
+        3,
+        "c",
+        "cognitive",
+        100,
+    );
+    assert_eq_round(
+        day100.v,
+        GOLDEN_COGNITIVE_GAP.day100_v,
+        3,
+        "v",
+        "cognitive",
+        100,
+    );
+    assert_eq_round(
+        e100,
+        GOLDEN_COGNITIVE_GAP.day100_e,
+        1,
+        "e",
+        "cognitive",
+        100,
+    );
     assert_eq_round(
         level_of(e100, &curve),
         GOLDEN_COGNITIVE_GAP.day100_level,
@@ -88,9 +111,30 @@ fn golden_cognitive_gap_matches() {
     // 断更 60 天（闭合公式）
     let day160 = apply_gap_closed_form(day100, p, 60.0);
     let e160 = day160.c + day160.v;
-    assert_eq_round(day160.c, GOLDEN_COGNITIVE_GAP.day160_c, 3, "c", "cognitive", 160);
-    assert_eq_round(day160.v, GOLDEN_COGNITIVE_GAP.day160_v, 3, "v", "cognitive", 160);
-    assert_eq_round(e160, GOLDEN_COGNITIVE_GAP.day160_e, 1, "e", "cognitive", 160);
+    assert_eq_round(
+        day160.c,
+        GOLDEN_COGNITIVE_GAP.day160_c,
+        3,
+        "c",
+        "cognitive",
+        160,
+    );
+    assert_eq_round(
+        day160.v,
+        GOLDEN_COGNITIVE_GAP.day160_v,
+        3,
+        "v",
+        "cognitive",
+        160,
+    );
+    assert_eq_round(
+        e160,
+        GOLDEN_COGNITIVE_GAP.day160_e,
+        1,
+        "e",
+        "cognitive",
+        160,
+    );
     assert_eq_round(
         level_of(e160, &curve),
         GOLDEN_COGNITIVE_GAP.day160_level,

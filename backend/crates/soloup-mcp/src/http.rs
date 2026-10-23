@@ -13,7 +13,7 @@ use axum::{
 };
 use tower_http::cors::CorsLayer;
 
-use crate::{handle_request, AppState, JsonRpcRequest, JsonRpcResponse};
+use crate::{handle_request, AppState, JsonRpcRequest};
 
 pub fn start_http_transport(state: AppState, port: u16) {
     let app = Router::new()
@@ -36,8 +36,11 @@ pub fn start_http_transport(state: AppState, port: u16) {
 async fn mcp_handler(
     State(state): State<AppState>,
     Json(request): Json<JsonRpcRequest>,
-) -> Json<JsonRpcResponse> {
-    Json(handle_request(&state, &request))
+) -> impl IntoResponse {
+    if request.id.is_none() {
+        return StatusCode::ACCEPTED.into_response();
+    }
+    Json(handle_request(&state, &request)).into_response()
 }
 
 async fn health_handler() -> impl IntoResponse {

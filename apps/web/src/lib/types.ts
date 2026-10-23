@@ -101,8 +101,10 @@ export interface AchStats {
   totalAttrs: number;
 }
 
-/** 成就条件 DSL（后端 achievements.condition_json）：左侧取一个统计量，右侧取常量阈值或另一个统计量 */
-export interface AchCondition {
+/** 成就条件 DSL：原子比较或 all/any 复合规则。 */
+export type AchCondition = AchStatCondition | { all: AchCondition[] } | { any: AchCondition[] };
+
+export interface AchStatCondition {
   /** 左侧统计量名（后端 stats 口径：totalDays / streak / maxLitOneDay / maxSkillLv / maxSkillCheckins / projectsCompleted / totalAttrs） */
   stat: string;
   /** 比较符：>= > == <= < */

@@ -54,10 +54,16 @@ pub struct SigmoidParams {
 
 pub fn sigmoid_default_params(cat: SkillCategory) -> SigmoidParams {
     match cat {
-        SkillCategory::Cognitive => SigmoidParams { k: 0.006, x0: 220.0 },
+        SkillCategory::Cognitive => SigmoidParams {
+            k: 0.006,
+            x0: 220.0,
+        },
         SkillCategory::Knowledge => SigmoidParams { k: 0.01, x0: 175.0 },
         // physical 用 saturated，不会走 sigmoid 默认；给个兜底。
-        SkillCategory::Physical => SigmoidParams { k: 0.006, x0: 220.0 },
+        SkillCategory::Physical => SigmoidParams {
+            k: 0.006,
+            x0: 220.0,
+        },
     }
 }
 

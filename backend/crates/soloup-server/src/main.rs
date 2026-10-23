@@ -23,7 +23,9 @@ use serde_json::{json, Value};
 use tower_http::cors::CorsLayer;
 use tower_http::services::{ServeDir, ServeFile};
 
-use soloup_server::{dispatch, local_lan_ip, resolve_web_dir, seed, DEFAULT_SERVER_PORT, LAN_ENABLED_KEY};
+use soloup_server::{
+    dispatch, local_lan_ip, resolve_web_dir, seed, DEFAULT_SERVER_PORT, LAN_ENABLED_KEY,
+};
 use soloup_solver::Solver;
 use soloup_store::open_store;
 
@@ -40,7 +42,7 @@ async fn rpc_handler(State(state): State<AppState>, Json(req): Json<RpcReq>) -> 
     // 作用域隔离：MutexGuard 不跨越 await，保证 handler future 是 Send。
     let result = {
         let mut solver = state.lock().unwrap();
-        dispatch(&mut *solver, &req.op, &req.args)
+        dispatch(&mut solver, &req.op, &req.args)
     };
     match result {
         Ok(data) => Json(json!({ "ok": true, "data": data })),
@@ -53,7 +55,11 @@ fn is_loopback(ip: IpAddr) -> bool {
     match ip {
         IpAddr::V4(v4) => v4.is_loopback(),
         IpAddr::V6(v6) => {
-            v6.is_loopback() || v6.to_ipv4_mapped().map(|v| v.is_loopback()).unwrap_or(false)
+            v6.is_loopback()
+                || v6
+                    .to_ipv4_mapped()
+                    .map(|v| v.is_loopback())
+                    .unwrap_or(false)
         }
     }
 }
@@ -99,11 +105,7 @@ async fn main() {
         .unwrap_or(DEFAULT_SERVER_PORT);
 
     let mut store = open_store(Default::default()).expect("打开数据库失败");
-    let seeded = store
-        .settings()
-        .get("seeded")
-        .unwrap_or(None)
-        .is_some();
+    let seeded = store.settings().get("seeded").unwrap_or(None).is_some();
     if !seeded {
         seed::seed_demo(&mut store).expect("写入演示种子失败");
         println!("首次启动：已写入演示种子");
@@ -128,7 +130,9 @@ async fn main() {
         .with_state(state);
 
     let addr = SocketAddr::from(([0, 0, 0, 0], port));
-    let listener = tokio::net::TcpListener::bind(addr).await.expect("绑定端口失败");
+    let listener = tokio::net::TcpListener::bind(addr)
+        .await
+        .expect("绑定端口失败");
 
     println!("soloup-server 已启动");
     println!("  本机      http://localhost:{port}/");
@@ -142,7 +146,10 @@ async fn main() {
         println!("  ⚠ 未找到 index.html —— 请先执行 pnpm --filter @soloup/web build");
     }
 
-    axum::serve(listener, app.into_make_service_with_connect_info::<SocketAddr>())
-        .await
-        .expect("服务异常退出");
+    axum::serve(
+        listener,
+        app.into_make_service_with_connect_info::<SocketAddr>(),
+    )
+    .await
+    .expect("服务异常退出");
 }

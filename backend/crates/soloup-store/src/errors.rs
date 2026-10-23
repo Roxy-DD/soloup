@@ -44,7 +44,10 @@ pub struct StoreError {
 
 impl StoreError {
     pub fn new(code: StoreErrorCode, message: impl Into<String>) -> Self {
-        Self { code, message: message.into() }
+        Self {
+            code,
+            message: message.into(),
+        }
     }
     pub fn not_found(message: impl Into<String>) -> Self {
         Self::new(StoreErrorCode::NotFound, message)
