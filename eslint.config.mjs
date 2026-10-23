@@ -13,6 +13,8 @@ export default tseslint.config(
     // 不忽略的话，只要跑过一次 build:dist，`pnpm lint` 就会被压缩 js 淹没而失败。
     '**/resources/web/**',
     '**/coverage/**',
+    // Playwright CLI 的调试会话目录（snapshot / 截图），本地排查产物
+    '**/.playwright-cli/**',
     '**/.git/**',
     '**/*.d.ts',
     '**/life-rpg-package/**',

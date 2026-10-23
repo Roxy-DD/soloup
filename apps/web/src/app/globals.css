@@ -820,7 +820,9 @@ li.closed .tw {
   margin: 0 2px;
 }
 .heat-detail {
-  height: 42px;
+  /* 定高是为了防「详情条随内容长短抖动」。单行 nowrap 下内容高度与文字长度无关，
+     所以 min-height 能达到同样效果，还能在系统字号放大时不被裁切。 */
+  min-height: 42px;
   margin: 0 0 10px;
   padding: 7px 10px;
   border: 2px dashed var(--panel-2);
@@ -839,9 +841,17 @@ li.closed .tw {
 .heat-detail > * {
   flex: 0 0 auto;
 }
-.heat-detail .dim {
+/*
+ * 技能名是唯一允许收缩的项。
+ * 坑：`.heat-detail > *` 的 flex:0 0 auto 会把子项宽度钉成内容全宽 —— 元素自身永不溢出，
+ * text-overflow: ellipsis 因此失效，溢出的是父容器、被 overflow:hidden 硬切（连省略号都没有）。
+ * min-width:0 是让 flex item 能缩到内容宽度以下的关键，缺了它 flex:1 也不起作用。
+ */
+.heat-detail .sk {
+  flex: 1 1 auto;
   min-width: 0;
   overflow: hidden;
+  white-space: nowrap;
   text-overflow: ellipsis;
 }
 .heat-detail .dt {
@@ -851,6 +861,9 @@ li.closed .tw {
 .heat-detail .dim {
   color: var(--text-3);
   font-weight: 700;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .chip-mini {
   display: inline-flex;
@@ -860,6 +873,11 @@ li.closed .tw {
   font-size: 11px;
   font-weight: 900;
   border: 1.5px solid var(--ink);
+}
+/* 详情条里 chip 数量多（最多 6 个），收窄以给技能名腾出空间 */
+.heat-detail .chip-mini {
+  padding: 0 4px;
+  font-size: 10px;
 }
 .heat-cols {
   display: flex;

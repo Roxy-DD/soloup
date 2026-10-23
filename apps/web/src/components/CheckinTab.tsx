@@ -285,7 +285,11 @@ function HeatMap({
                   {a.name}
                 </span>
               ))}
-              {sNames.length > 0 && <span className="dim">技能：{sNames.join('、')}</span>}
+              {sNames.length > 0 && (
+                <span className="dim sk" title={`技能：${sNames.join('、')}`}>
+                  技能：{sNames.join('、')}
+                </span>
+              )}
             </>
           ) : (
             <>

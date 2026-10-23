@@ -7,3 +7,5 @@ pnpm-lock.yaml
 *.md
 # copy-sidecars.mjs 生成的前端产物；显式忽略，避免 `pnpm format` 重写压缩后的 js
 src-tauri/resources/web/
+# Playwright CLI 调试产物（snapshot yml），不是源码
+.playwright-cli/

@@ -42,3 +42,6 @@ src-tauri/gen/
 *.log
 _pnpm_test.txt
 _tmp_*
+
+# Playwright CLI 调试会话产物（截图 / snapshot），本地排查用，不入库
+.playwright-cli/
