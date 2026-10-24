@@ -1259,6 +1259,20 @@ pub fn dispatch(solver: &mut Solver, op: &str, args: &Value) -> Result<Value, Rp
             Ok(json!({ "settled": effects.len() }))
         }
 
+        // 全量重放：不看 last_settled_date，从各技能创建日重演到今天。
+        // 用于修复增量推进跳过的日期、或导入历史数据后的对账（幂等）。
+        "recalc.full" => {
+            let effects = solver.replay_all()?;
+            Ok(json!({
+                "replayed": effects.len(),
+                "changed": effects
+                    .iter()
+                    .filter(|e| (e.after.c - e.before.c).abs() > 1e-9
+                        || (e.after.v - e.before.v).abs() > 1e-9)
+                    .count(),
+            }))
+        }
+
         // 局域网服务：开关持久化在 settings 表，即时生效（服务端每次请求实时读取）。
         "lan.status" => Ok(lan_status(solver)),
 

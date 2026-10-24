@@ -172,6 +172,21 @@ impl Solver {
         Ok(map)
     }
 
+    /// 事务内取打卡快照。**必须在写入当日记录之后调用** —— 事务外的
+    /// `member_map` 是写入前的副本，看不到刚落下的一天，会导致该日永久漏算
+    /// （`last_settled_date` 已推进到当日，增量推进不再回头）。
+    fn member_map_conn(
+        c: &rusqlite::Connection,
+        to: &str,
+    ) -> Result<HashMap<String, Vec<String>>, SolverError> {
+        let members = DailyRepo { db: c }.list_members(None, Some(to))?;
+        let mut map: HashMap<String, Vec<String>> = HashMap::new();
+        for m in members {
+            map.entry(m.date).or_default().push(m.skill_id);
+        }
+        Ok(map)
+    }
+
     fn profile_of(skill: &Skill) -> ProfileSnapshot {
         ProfileSnapshot {
             category: skill.category,
@@ -265,6 +280,37 @@ impl Solver {
         Ok(effects)
     }
 
+    /// 全量重放全部活跃叶子：从 `created_at` 重演到 today（§3.5）。
+    /// 与 `settle_all` 的区别是**不看 `last_settled_date`**，因此能补回被增量推进
+    /// 跳过的日期（如打卡当日漏算的后遗症）。结果幂等，可反复执行。
+    pub fn replay_all(&mut self) -> Result<Vec<SkillEffect>, SolverError> {
+        let today = self.today();
+        let overrides = self.read_overrides()?;
+        let mut leaf_ids: Vec<String> = Vec::new();
+        for s in self.store.skills().list()? {
+            if s.archived_at.is_some() {
+                continue;
+            }
+            if !self.store.skills().children_of(&s.id)?.is_empty() {
+                continue;
+            }
+            leaf_ids.push(s.id);
+        }
+        let effects = self
+            .store
+            .tx(|c| -> Result<Vec<SkillEffect>, SolverError> {
+                let members = Self::member_map_conn(c, &today)?;
+                let mut out = Vec::with_capacity(leaf_ids.len());
+                for id in &leaf_ids {
+                    out.push(Self::replay_and_persist_conn(
+                        c, id, &today, &overrides, &members,
+                    )?);
+                }
+                Ok(out)
+            })?;
+        Ok(effects)
+    }
+
     /// 打卡（date 必须=今天；同日覆盖 → 受影响技能全量重放）。
     pub fn checkin(
         &mut self,
@@ -319,7 +365,6 @@ impl Solver {
             set.into_iter().collect()
         };
         let overrides = self.read_overrides()?;
-        let members = self.member_map(&today)?;
         let effects = self.store.tx(|c| -> Result<Vec<SkillEffect>, SolverError> {
             let daily = DailyRepo { db: c };
             daily.save(
@@ -330,6 +375,9 @@ impl Solver {
                     skill_ids: deduped.clone(),
                 },
             )?;
+            // 快照必须在这里重取：上面刚把今天的打卡写进库，事务外那份副本里没有它，
+            // 拿旧副本重放会让「当天」永远不进账户（见 member_map_conn 注释）。
+            let members = Self::member_map_conn(c, &today)?;
             let mut out = Vec::new();
             for id in &affected {
                 let skill = SkillRepo { db: c }.get(id)?;
