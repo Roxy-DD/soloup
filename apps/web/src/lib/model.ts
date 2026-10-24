@@ -217,15 +217,22 @@ export function achStatValue(s: AchStats, name: string): number | undefined {
   }
 }
 
-/** 统计量 → 进度文案（「当前 / 目标 单位」）。未登记的统计量退化为裸数字。 */
-const STAT_TEXT: Record<string, (cur: number, target: number) => string> = {
-  totalDays: (c, t) => `已记录 ${c} / ${t} 天`,
-  streak: (c, t) => `当前连续 ${c} / ${t} 天`,
-  maxLitOneDay: (c, t) => `单日最高点亮 ${c} / ${t} 项`,
-  maxSkillLv: (c, t) => `当前最高技能 LV ${c} / ${t}`,
-  maxSkillCheckins: (c, t) => `累计打卡 ${fmtNum(c)} / ${fmtNum(t)} 天`,
-  projectsCompleted: (c, t) => `已完成 ${c} / ${t} 个项目`,
-  totalAttrs: (c, t) => `单日最高点亮 ${c} / ${t} 项`,
+/** 统计量 → 进度文案（「当前 / 目标 单位」）。未登记的统计量退化为裸数字。
+ *
+ *  `reached` 为真时只报绝对值：达标之后再写「当前 / 目标」会被读成反的
+ *  （「已记录 14 / 1 天」——14 天算 1 天的目标，看着像个错误），而进度条已经满了，
+ *  分数形式不再表达任何信息。 */
+const STAT_TEXT: Record<string, (cur: number, target: number, reached: boolean) => string> = {
+  totalDays: (c, t, done) => (done ? `已记录 ${c} 天` : `已记录 ${c} / ${t} 天`),
+  streak: (c, t, done) => (done ? `当前连续 ${c} 天` : `当前连续 ${c} / ${t} 天`),
+  maxLitOneDay: (c, t, done) => (done ? `单日最高点亮 ${c} 项` : `单日最高点亮 ${c} / ${t} 项`),
+  maxSkillLv: (c, t, done) => (done ? `当前最高技能 LV ${c}` : `当前最高技能 LV ${c} / ${t}`),
+  maxSkillCheckins: (c, t, done) =>
+    done ? `累计打卡 ${fmtNum(c)} 天` : `累计打卡 ${fmtNum(c)} / ${fmtNum(t)} 天`,
+  projectsCompleted: (c, t, done) => (done ? `已完成 ${c} 个项目` : `已完成 ${c} / ${t} 个项目`),
+  // totalAttrs 主要作为右值（ref）出现。作为左值时它是「属性总数」，
+  // 不能沿用「单日最高点亮」的说法 —— 那是另一个统计量。
+  totalAttrs: (c, t, done) => (done ? `共 ${c} 项属性` : `共 ${c} / ${t} 项属性`),
 };
 
 export interface AchProgress {
@@ -262,8 +269,16 @@ export function achProgress(stats: AchStats, cond: AchCondition | null): AchProg
   if (cur === undefined) return null;
   const target = cond.ref ? achStatValue(stats, cond.ref) : cond.value;
   if (target === undefined) return null;
-  const text = (STAT_TEXT[cond.stat] ?? ((c: number, t: number) => `${c} / ${t}`))(cur, target);
-  return { text, ratio: target > 0 ? Math.min(cur / target, 1) : 0 };
+  // 只看「已达标」这一件事，不改变比例口径：`<` / `<=` 的达标态不是「进度满」，
+  // 沿用分数写法，免得把两种语义混在同一句文案里。
+  const reached =
+    (cond.operator === '>=' && cur >= target) ||
+    (cond.operator === '>' && cur > target) ||
+    (cond.operator === '==' && cur === target);
+  const fmt =
+    STAT_TEXT[cond.stat] ??
+    ((c: number, t: number, done: boolean) => (done ? `${c}` : `${c} / ${t}`));
+  return { text: fmt(cur, target, reached), ratio: target > 0 ? Math.min(cur / target, 1) : 0 };
 }
 
 /** 本周（周一起）记录天数 */

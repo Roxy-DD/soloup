@@ -74,10 +74,10 @@ const SIGIL_BY_NAME: Record<string, string> = {
   完稿: 'scroll',
   千锤: 'anvil',
   岁轮: 'rings',
-  宗师之路: 'peak',
+  百日专注: 'peak',
   双作: 'stack2',
   三部作: 'stack3',
-  万时之功: 'hourglass',
+  年度深耕: 'hourglass',
 };
 /** 种子成就 id → 徽记（名字被改过时仍能对上） */
 const SIGIL_BY_ID: Record<string, string> = {
@@ -337,7 +337,7 @@ function Acard({
 
             <div className="af-data">
               <span>{stateText}</span>
-              <span>{dateText}</span>
+              <span className="af-date">{dateText}</span>
             </div>
 
             <div className="af-foot">

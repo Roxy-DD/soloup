@@ -914,11 +914,7 @@ pub fn dispatch(solver: &mut Solver, op: &str, args: &Value) -> Result<Value, Rp
                     .ok_or_else(|| validation_error("非法 type"))?,
                 None => soloup_core::schema::AchievementType::Milestone,
             };
-            let rarity = match s(args, "rarity") {
-                Some(value) => soloup_core::schema::Rarity::parse(value)
-                    .ok_or_else(|| validation_error("非法 rarity"))?,
-                None => soloup_core::schema::Rarity::Common,
-            };
+            // points 要在 rarity 之前解析：未显式给 rarity 时它由分值决定
             let points = i(args, "points").unwrap_or(10);
             if args.get("points").is_some() && i(args, "points").is_none() {
                 return Err(validation_error("points 必须是整数"));
@@ -926,6 +922,12 @@ pub fn dispatch(solver: &mut Solver, op: &str, args: &Value) -> Result<Value, Rp
             if !(0..=100_000).contains(&points) {
                 return Err(validation_error("points 必须在 0 到 100000 之间"));
             }
+            // 稀有度默认跟着分值走（见 Rarity::from_points），显式传 rarity 仍然可以覆盖
+            let rarity = match s(args, "rarity") {
+                Some(value) => soloup_core::schema::Rarity::parse(value)
+                    .ok_or_else(|| validation_error("非法 rarity"))?,
+                None => soloup_core::schema::Rarity::from_points(points),
+            };
             let reveal_at = args.get("reveal_at").and_then(|v| v.as_f64());
             if reveal_at.is_some_and(|value| !(0.0..=1.0).contains(&value)) {
                 return Err(validation_error("reveal_at 必须在 0 到 1 之间"));
@@ -979,18 +981,24 @@ pub fn dispatch(solver: &mut Solver, op: &str, args: &Value) -> Result<Value, Rp
                         }
                     })?;
             }
+            let mut rarity_explicit = false;
             if let Some(rarity_str) = s(args, "rarity") {
                 a.rarity =
                     soloup_core::schema::Rarity::parse(rarity_str).ok_or_else(|| RpcError {
                         code: "ERR_VALIDATION".into(),
                         message: "非法 rarity".into(),
                     })?;
+                rarity_explicit = true;
             }
             if let Some(pts) = i(args, "points") {
                 if !(0..=100_000).contains(&pts) {
                     return Err(validation_error("points 必须在 0 到 100000 之间"));
                 }
                 a.points = pts;
+                // 只改分值、没点明稀有度时，档位跟着分值走 —— 否则改完分值的卡会停在旧档
+                if !rarity_explicit {
+                    a.rarity = soloup_core::schema::Rarity::from_points(a.points);
+                }
             } else if args.get("points").is_some() {
                 return Err(validation_error("points 必须是整数"));
             }

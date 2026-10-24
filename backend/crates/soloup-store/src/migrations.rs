@@ -191,6 +191,56 @@ UPDATE achievements SET name=CASE WHEN name='万时之功' THEN '年度深耕' E
 "#,
 };
 
+/// V6 是**空跑**的：它的 WHERE 用序列化后的 JSON 字符串做等值比较，而库里存的键顺序是
+/// `operator/stat/value`、V6 写的却是 `stat/operator/value` —— 字符串不等，于是
+/// `dawn` / `grand` / `tenk` 三条一条都没被改到，`user_version` 却照样跳到 6。
+/// 新装用户走 seed 拿到的是新文案，老库停在旧文案，两种库永久分叉。
+///
+/// 这一版改用 `json_extract` 按字段匹配（键顺序无关），并且：
+/// ① 幂等 —— 已经是对的库再跑一遍不动它；
+/// ② 兼容「V6 生效过」与「V6 空跑过」两种历史；
+/// ③ 顺手把稀有度归到分值的单调分档（见 `Rarity::from_points`）。
+///    真实库 22 条里只有「完稿 150」越档（金卡却低于两张紫卡），归一后金卡 5 → 4 张。
+pub const V7_ACHIEVEMENT_CONDITION_JSON_MATCH: Migration = Migration {
+    version: 7,
+    label: "补齐 V6 空跑：成就条件按 JSON 字段匹配，稀有度归一到分值分档",
+    sql: r#"
+UPDATE achievements SET
+  description = '任一技能累计记录 7 天',
+  condition_json = '{"stat":"maxSkillCheckins","operator":">=","value":7}'
+  WHERE json_extract(condition_json,'$.stat')='maxSkillLv'
+    AND json_extract(condition_json,'$.value')=4;
+
+UPDATE achievements SET
+  name = '百日专注',
+  description = '任一技能累计记录 100 天',
+  condition_json = '{"stat":"maxSkillCheckins","operator":">=","value":100}'
+  WHERE json_extract(condition_json,'$.stat')='maxSkillLv'
+    AND json_extract(condition_json,'$.value')=20;
+
+-- 旧文案有两种写法（「累计使用 10,000 次」是错单位的那个），匹配条件是 stat+value，
+-- 所以描述直接覆盖：这三行的旧描述本来就是在描述旧条件。
+UPDATE achievements SET
+  name = '年度深耕',
+  description = '任一技能累计记录 365 天',
+  condition_json = '{"stat":"maxSkillCheckins","operator":">=","value":365}'
+  WHERE json_extract(condition_json,'$.stat')='maxSkillCheckins'
+    AND json_extract(condition_json,'$.value')=10000;
+
+UPDATE achievements SET rarity = CASE
+    WHEN points <= 20 THEN 'common'
+    WHEN points <= 60 THEN 'rare'
+    WHEN points < 200 THEN 'epic'
+    ELSE 'legendary' END
+  WHERE points IS NOT NULL
+    AND rarity <> CASE
+    WHEN points <= 20 THEN 'common'
+    WHEN points <= 60 THEN 'rare'
+    WHEN points < 200 THEN 'epic'
+    ELSE 'legendary' END;
+"#,
+};
+
 pub const MIGRATIONS: &[Migration] = &[
     V1_INIT,
     V2_ACHIEVEMENT_REVEAL,
@@ -198,6 +248,7 @@ pub const MIGRATIONS: &[Migration] = &[
     V4_ACHIEVEMENT_CONDITIONS,
     V5_ACHIEVEMENT_REVEAL_FIELDS,
     V6_OBSERVABLE_SKILL_ACHIEVEMENTS,
+    V7_ACHIEVEMENT_CONDITION_JSON_MATCH,
 ];
 
 pub fn latest_schema_version() -> i64 {

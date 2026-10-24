@@ -77,6 +77,23 @@ db_enum!(AttributeCategory, { Physical => "physical", Mental => "mental", Social
 db_enum!(ProjectStatus, { Planned => "planned", Active => "active", Completed => "completed", Abandoned => "abandoned" });
 db_enum!(AchievementType, { Skill => "skill", Attribute => "attribute", Project => "project", Milestone => "milestone" });
 db_enum!(Rarity, { Common => "common", Rare => "rare", Epic => "epic", Legendary => "legendary" });
+
+/// 稀有度 = 分值的单调分档。
+///
+/// 卡墙是按 `points` 升序摆的，所以稀有度必须随分值单调递增，否则会出现
+/// 「150 分的金卡夹在 160 / 180 分的紫卡中间」——用户读到的不是难度梯度，是配色随机。
+/// 分档点取自真实成就表的自然断档（20→30、60→100、180→200），不是拍脑袋的等分。
+/// 迁移 V7、seed、`achievement_create` 都用这一处，避免三份规则各说各话。
+impl Rarity {
+    pub fn from_points(points: i64) -> Rarity {
+        match points {
+            p if p <= 20 => Rarity::Common,
+            p if p <= 60 => Rarity::Rare,
+            p if p < 200 => Rarity::Epic,
+            _ => Rarity::Legendary,
+        }
+    }
+}
 db_enum!(AuditActor, { User => "user", Ai => "ai", System => "system" });
 
 /* ------------------------------ 行结构 ------------------------------ */

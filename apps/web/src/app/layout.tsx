@@ -38,7 +38,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           iOS 版本上仍只认带 Apple 前缀的这一个，所以两个都保留。
         */}
         <meta name="apple-mobile-web-app-capable" content="yes" />
-        {/* 字体：jsdelivr @fontsource CDN（浏览器侧加载、失败自动回退系统字体） */}
+        {/* 中文字体：jsdelivr @fontsource CDN（失败自动回退系统字体）。
+            像素字体 Press Start 2P 不在这里 —— 它已自托管在 public/fonts，
+            因为它是卡面唯一「换掉就不像同一套」的字形，不能依赖网络。 */}
         <link
           rel="stylesheet"
           href="https://cdn.jsdelivr.net/npm/@fontsource/noto-sans-sc@5.1.0/400.css"
@@ -50,10 +52,6 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <link
           rel="stylesheet"
           href="https://cdn.jsdelivr.net/npm/@fontsource/noto-sans-sc@5.1.0/900.css"
-        />
-        <link
-          rel="stylesheet"
-          href="https://cdn.jsdelivr.net/npm/@fontsource/press-start-2p@5.1.0/400.css"
         />
       </head>
       <body>{children}</body>

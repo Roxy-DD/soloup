@@ -15,6 +15,9 @@ export default tseslint.config(
     '**/coverage/**',
     // Playwright CLI 的调试会话目录（snapshot / 截图），本地排查产物
     '**/.playwright-cli/**',
+    // .workbuddy/ 是本地草稿与记忆目录（已在 .gitignore，但 ESLint 9 flat config
+    // 不读 .gitignore）—— 原型脚本里写的是一次性 `async page => {...}` 片段，不该被规则检查
+    '**/.workbuddy/**',
     '**/.git/**',
     '**/*.d.ts',
     '**/life-rpg-package/**',
